@@ -1,0 +1,3 @@
+#!/bin/sh
+# Fake macOS networkQuality for tests: JSON like `networkQuality -c`.
+echo '{"dl_throughput": 182400000, "ul_throughput": 19400000, "responsiveness": 900}'

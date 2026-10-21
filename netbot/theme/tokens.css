@@ -1,0 +1,74 @@
+/* NetBot "mission control" design tokens.
+   Free to use with the NetBot package. Contrast ratios are WCAG 2.x, measured on --nb-panel. */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --nb-bg:        #06080B;  /* page background, near-black */
+  --nb-panel:     #0C1117;  /* cards and chart panels */
+  --nb-raised:    #121922;  /* hover, header strip, inputs */
+
+  /* Lines (decorative only, never the sole carrier of meaning) */
+  --nb-grid:      #1A222C;  /* background grid, chart gridlines */
+  --nb-hairline:  #263241;  /* panel borders, dividers */
+  --nb-line:      #33414F;  /* chart axes, stronger rules */
+  --nb-control:   #56667A;  /*  3.2:1  borders of buttons and inputs (WCAG 1.4.11 needs 3:1) */
+
+  /* Type */
+  --nb-text:      #F2F5F8;  /* 17.3:1  primary text, big numerals */
+  --nb-text-2:    #A7B2C0;  /*  8.8:1  secondary text, detail lines */
+  --nb-text-3:    #7B8796;  /*  5.2:1  labels, units, timestamps (min. 11px uppercase) */
+
+  /* The single accent */
+  --nb-accent:    #3DF26F;  /*  12.7:1 on the panel  brand and UI: header art, emblem, primary buttons, focus rings, chips, links. Not a data-line color. */
+  --nb-accent-dim: rgba(61, 242, 111, 0.14); /* chart area fill, selection */
+
+  /* Status colors: status lights and status labels ONLY */
+  --nb-ok:        #37A484;  /*  6.1:1  sea-green teal: darker than the accent so the two never blend, even under tritanopia */
+  --nb-warn:      #F5B83D;  /* 10.7:1 */
+  --nb-alert:     #FF5C5C;  /*  6.3:1 */
+  --nb-nodata:    #8B96A5;  /*  6.3:1 */
+
+  /* Metric colors: one per metric, for chart lines, chart fills and the panel color key ONLY.
+     Never on status lights, status words, buttons or chips. Tuned from the Okabe-Ito / Tol light
+     families (blue, sky, pale cyan, sand, pink, reddish purple, periwinkle); greens, teals,
+     ambers and reds are left out on purpose so no metric can read as the accent or a status.
+     Contrast: on --nb-bg / on --nb-panel. */
+  --metric-latency:          #3DA5FF;  /*  7.7 /  7.2  dish latency            (blue)          */
+  --metric-ping-drop:        #FF66B8;  /*  7.5 /  7.1  dish ping drop          (hot pink)      */
+  --metric-throughput:       #B8F1FF;  /* 16.3 / 15.4  dish throughput         (pale cyan)     */
+  --metric-obstruction:      #E9C0A5;  /* 12.0 / 11.3  dish obstruction        (sand)          */
+  --metric-gateway-ping:     #517AEC;  /*  5.1 /  4.8  network: gateway ping   (cobalt)        */
+  --metric-internet-latency: #B8CBFF;  /* 12.4 / 11.8  network: internet lat.  (periwinkle)    */
+  --metric-packet-loss:      #F49AB2;  /*  9.7 /  9.1  network: packet loss    (rose pink)     */
+  --metric-speed-test:       #EEF1C6;  /* 17.2 / 16.3  network: speed test     (pale cream)    */
+  --metric-router-devices:   #D147B6;  /*  5.0 /  4.8  router: connected dev.  (reddish purple)*/
+  --nb-metric-fill-opacity:  0.14;     /* chart area fill = metric color at 14% */
+
+  /* Type families: system stacks first; Inter / IBM Plex Mono are used only if installed
+     or embedded locally (both SIL OFL 1.1). No CDN. */
+  --nb-font-ui:   "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --nb-font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
+  /* Type scale (px) */
+  --nb-fs-label:   11px;  /* uppercase labels, tracking 0.12em */
+  --nb-fs-small:   12px;
+  --nb-fs-body:    14px;
+  --nb-fs-title:   18px;
+  --nb-fs-numeral: 44px;  /* telemetry numerals; 34px under 600px wide */
+  --nb-fs-unit:    13px;
+
+  /* 4px spacing scale */
+  --nb-s1: 4px;  --nb-s2: 8px;  --nb-s3: 12px; --nb-s4: 16px;
+  --nb-s5: 24px; --nb-s6: 32px; --nb-s7: 48px; --nb-s8: 64px;
+
+  /* Grid */
+  --nb-grid-cell: 32px;     /* background grid pitch */
+  --nb-gutter:    16px;
+  --nb-maxw:      1360px;
+
+  /* Shape */
+  --nb-radius:    2px;      /* nearly square corners */
+  --nb-border:    1px solid var(--nb-hairline);
+  --nb-light:     10px;     /* status light diameter */
+}

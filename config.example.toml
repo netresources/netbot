@@ -1,0 +1,26 @@
+# NetBot config. install.sh writes ~/NetBot/config.toml for you. No secrets in this file.
+[paths]
+data_dir = "~/NetBot/data"
+# Optional cloud folder for a synced copy (OneDrive, iCloud Drive, Dropbox, Google Drive). Empty = local only.
+sync_dir = ""
+dish_lib = "~/NetBot/dish-lib"   # the dish library setup downloads (pinned, sha256-checked)
+
+[dish]
+target = "192.168.100.1:9200"
+
+[router]
+enabled = false
+host = ""
+username = "admin"
+use_password = false
+keychain_service = "netbot-linksys"   # password, if any, lives ONLY in macOS Keychain
+
+[alerts]
+quiet_start = 22
+quiet_end = 6
+
+[live]
+# Home Wi-Fi access for the live page. Off: the page opens only on this computer.
+# The access key, when access is on, is a separate file (live-access.key), not this config.
+lan = false
+port = 8765

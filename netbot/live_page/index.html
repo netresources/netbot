@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="60">
+<title>__PRODUCT_TITLE__</title>
+<link rel="stylesheet" href="/assets/tokens.css">
+<link rel="stylesheet" href="/assets/netbot-theme.css">
+<link rel="stylesheet" href="/assets/netbot-live.css">
+</head>
+<body class="nb-page nb-live-page" data-live="live">
+<main class="nb-wrap">
+<div class="nb-banner" id="example" role="note" hidden></div>
+<div class="nb-statebar nb-statebar--lost" id="lost-banner" role="alert" hidden>
+  <span class="nb-statebar__mark" aria-hidden="true"></span>
+  <p><b>Connection to NetBot lost</b> · this page can't reach the NetBot server on this network. Retrying every 10 s <span class="nb-retry" aria-hidden="true"></span>
+  <span class="nb-statebar__sub" id="lost-sub">Showing the last values received. They are dimmed until the connection is back.</span></p>
+  <span class="nb-statebar__word">RETRYING</span>
+</div>
+<div class="nb-statebar nb-statebar--offline" id="offline-banner" data-show="offline" role="note" hidden>
+  <span class="nb-statebar__mark" aria-hidden="true"></span>
+  <p><b>Offline copy · snapshot from <span id="offline-when"></span> · not live</b>
+  <span class="nb-statebar__sub">A saved copy of the dashboard. Values do not update, and the live link isn't included.</span></p>
+</div>
+<header class="nb-header">
+__HEADER_ART__
+<div>
+  <h1 class="nb-title" aria-label="__PRODUCT_TITLE__"><span class="nb-brand">__APP_NAME__</span><span class="nb-title__name">__HEADING__</span></h1>
+  <p class="nb-subtitle">Read-only monitor · checks every 5 min</p>
+  <div class="nb-chips" id="chips"></div>
+</div>
+<div class="nb-header__right">
+  <div class="nb-livebox" data-hide="offline">
+    <p class="nb-live">
+      <i class="nb-live__mark" aria-hidden="true"></i>
+      <span class="nb-live__word" id="live-word" role="status" aria-live="polite" aria-atomic="true">LIVE</span>
+      <span class="nb-live__sep" aria-hidden="true">·</span>
+      <span class="nb-live__age" id="live-age" aria-hidden="true">last sample 0 s ago</span>
+    </p>
+    <p class="nb-live__meta" id="live-meta">Page refreshes every 30 s · dish sampled every 5 min</p>
+  </div>
+  <p class="nb-clock" id="clock"></p>
+</div>
+</header>
+<section class="nb-access" data-hide="offline" aria-label="Access on home Wi-Fi">
+  <p class="nb-wifi is-off" id="wifi"><i class="nb-sq" aria-hidden="true"></i><span class="nb-wifi__label">Home Wi-Fi access</span> <b class="nb-wifi__state" id="wifi-state">OFF</b></p>
+  <p class="nb-link nb-link--off" id="link-off">Home Wi-Fi access is <b>OFF</b>. This page opens only on this computer. Turn access on in NetBot settings to get a private link.</p>
+  <div class="nb-link" id="link-on" hidden>
+    <span class="nb-label">Private link</span>
+    <code class="nb-link__url" id="link-url" aria-label="Private link, key hidden"></code>
+    <button type="button" class="nb-btn" id="btn-copy">Copy</button>
+    <button type="button" class="nb-btn nb-btn--ghost" id="btn-show" aria-pressed="false">Show</button>
+    <p class="nb-link__note">Works only on your home Wi-Fi.</p>
+  </div>
+  <p class="nb-link nb-link--off" id="link-local-only" hidden>The private link is shown only on the computer that runs NetBot.</p>
+  <p class="nb-link nb-link--off" id="link-no-address" hidden>No private home-network address was found, so this page has no Wi-Fi link.</p>
+</section>
+<p class="nb-lastknown" id="lastknown" hidden>Last values received · <span id="lastknown-when"></span> · not updating</p>
+<ul class="nb-legend" id="legend"></ul>
+<div class="nb-data" id="data">
+  <div id="panels"></div>
+  <div id="charts"></div>
+</div>
+<footer class="nb-footer"><span>__APP_NAME__</span><span id="foot"></span></footer>
+</main>
+<noscript><p>This page refreshes every 60 seconds.</p></noscript>
+<script src="/assets/uplot.js"></script>
+<script src="/assets/live.js"></script>
+</body>
+</html>

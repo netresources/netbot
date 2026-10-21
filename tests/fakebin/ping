@@ -1,0 +1,18 @@
+#!/bin/sh
+# Fake ping for tests (offline), fixed table: 127.0.0.1 and 192.0.2.1 (the fake gateway) answer at 1.5 ms;
+# 203.0.113.9 never answers; every other host answers at 40/42/44 ms.
+host=""; count=3
+while [ $# -gt 0 ]; do case "$1" in -c) count="$2"; shift;; -i|-W|-w|-t) shift;; -*) ;; *) host="$1";; esac; shift; done
+echo "PING $host ($host): 56 data bytes"
+recv=0; i=0
+while [ "$i" -lt "$count" ]; do
+  case "$host" in
+    127.0.0.1|192.0.2.1) echo "64 bytes from $host: icmp_seq=$i ttl=64 time=1.5 ms"; recv=$((recv+1));;
+    203.0.113.9) ;;
+    *) echo "64 bytes from $host: icmp_seq=$i ttl=55 time=$((40 + 2 * (i % 3))).0 ms"; recv=$((recv+1));;
+  esac
+  i=$((i+1))
+done
+echo "--- $host ping statistics ---"
+echo "$count packets transmitted, $recv packets received, $(( (count - recv) * 100 / count )).0% packet loss"
+[ "$recv" -gt 0 ]

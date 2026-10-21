@@ -1,0 +1,246 @@
+# NetBot shared helpers for install.sh and uninstall.sh (macOS). Sourced, not run.
+# Logic only: every word a person sees comes from strings/messages.sh.
+# Each AppleScript below starts with a "-- netbot:<kind>" tag so tests can tell dialogs apart.
+
+NB_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../strings/messages.sh
+. "$NB_LIB_DIR/../strings/messages.sh"
+
+GUI=false
+if [ -z "${NETBOT_NONINTERACTIVE:-}" ] && [ "$(uname -s)" = "Darwin" ] && command -v osascript >/dev/null 2>&1; then GUI=true; fi
+
+STEP_NUM=0; STEP_TOTAL="${STEP_TOTAL:-0}"; STEP_NAME=""
+step() { # step "title" -> prints "Step N of M: title" and remembers it for error messages
+  STEP_NUM=$((STEP_NUM+1)); STEP_NAME="$1"
+  # shellcheck disable=SC2059
+  printf '\n\033[1m%s\033[0m\n' "$(printf "$MSG_STEP_FMT" "$STEP_NUM" "$STEP_TOTAL" "$1")"; }
+say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
+ok()   { printf '%s%s\n' "$MSG_OK_PREFIX" "$*"; }
+warn() { printf '%s%s\n' "$MSG_WARN_PREFIX" "$*"; }
+err()  { printf '%s%s\n' "$MSG_ERR_PREFIX" "$*"; }
+fmt()  { local f="$1"; shift; # shellcheck disable=SC2059
+  printf "$f" "$@"; }
+die()  { err "$*"; exit 1; }
+ask()  { # ask "question" default -> echoes answer
+  local a; read -r -p "  $1 [$2]: " a || true; echo "${a:-$2}"; }
+
+confirm() { # confirm "question" default(y/n) -> 0 if yes
+  if $GUI; then
+    local def="$MSG_BTN_NO"; [ "${2:-n}" = y ] && def="$MSG_BTN_YES"
+    [ "$(osascript - "$1" "$MSG_TITLE" "$MSG_BTN_NO" "$MSG_BTN_YES" "$def" <<'AS' 2>/dev/null
+-- netbot:confirm
+on run argv
+  set r to display dialog (item 1 of argv) with title (item 2 of argv) buttons {item 3 of argv, item 4 of argv} default button (item 5 of argv)
+  return button returned of r
+end run
+AS
+)" = "$MSG_BTN_YES" ]; return
+  fi
+  case "$(ask "$1 (y/n)" "${2:-n}")" in [Yy]*) return 0;; *) return 1;; esac; }
+
+gui_text() { # gui_text "question" -> typed text ("" if skipped)
+  osascript - "$1" "$MSG_TITLE" "$MSG_BTN_SKIP" "$MSG_BTN_OK" <<'AS' 2>/dev/null || true
+-- netbot:text
+on run argv
+  set r to display dialog (item 1 of argv) with title (item 2 of argv) default answer "" buttons {item 3 of argv, item 4 of argv} default button (item 4 of argv)
+  if button returned of r is (item 3 of argv) then return ""
+  return text returned of r
+end run
+AS
+}
+
+gui_choose() { # gui_choose "prompt" item... -> chosen item or ""
+  osascript - "$MSG_TITLE" "$@" <<'AS' 2>/dev/null | sed 's/^false$//' || true
+-- netbot:choose
+on run argv
+  set opts to items 3 thru -1 of argv
+  set r to choose from list opts with title (item 1 of argv) with prompt (item 2 of argv) default items {item 1 of opts}
+  if r is false then return "false"
+  return item 1 of r
+end run
+AS
+}
+
+gui_notice() { # gui_notice "message" [caution] -> one OK button
+  $GUI || return 0
+  osascript - "$1" "$MSG_TITLE" "$MSG_BTN_OK" "${2:-note}" <<'AS' >/dev/null 2>&1 || true
+-- netbot:notice
+on run argv
+  if (item 4 of argv) is "caution" then
+    display dialog (item 1 of argv) with title (item 2 of argv) buttons {item 3 of argv} default button 1 with icon caution
+  else
+    display dialog (item 1 of argv) with title (item 2 of argv) buttons {item 3 of argv} default button 1
+  end if
+end run
+AS
+}
+
+gui_final_ok() { # -> 0 if the person clicked Open Dashboard
+  [ "$(osascript - "$MSG_FINAL_OK" "$MSG_TITLE" "$MSG_BTN_CLOSE" "$MSG_BTN_OPEN_DASHBOARD" <<'AS' 2>/dev/null
+-- netbot:final-ok
+on run argv
+  set r to display dialog (item 1 of argv) with title (item 2 of argv) buttons {item 3 of argv, item 4 of argv} default button (item 4 of argv)
+  return button returned of r
+end run
+AS
+)" = "$MSG_BTN_OPEN_DASHBOARD" ]; }
+
+# Keychain helpers (macOS `security`). The password itself never passes through these.
+kc_exists() { security find-generic-password -s "$1" -a "$2" >/dev/null 2>&1; }
+kc_delete() { security delete-generic-password -s "$1" -a "$2" >/dev/null 2>&1; }
+
+# launchd helpers
+launchd_domain() { echo "gui/$(id -u)"; }
+launchd_loaded() { launchctl print "$(launchd_domain)/$1" >/dev/null 2>&1; }
+
+# The same comment is in io.netbot.collect.plist.template and io.netbot.live.plist.template.
+# A LaunchAgent file is ours for this home when either:
+#   - it has this marker and every path string is the home or a file inside it
+#     (what the current installer writes), or
+#   - it has no marker, the file name is exactly io.netbot.collect.plist or
+#     io.netbot.live.plist, the Label string matches that file name, and every
+#     Program and ProgramArguments path is inside the home (plists from before
+#     the marker existed).
+# A program path counts as inside the home only when it is a plain absolute
+# path. Relative paths, a "/../" or "/./" segment, and a trailing "/.." or "/."
+# are refused before the home-prefix comparison. That comparison does not
+# resolve "." or "..". The check stays on the string: macOS bash 3.2 has no
+# GNU realpath and no readlink -f.
+# A symlink is not ours. It is never followed.
+# Anything else is left untouched. Callers name those two files and never glob.
+NB_PLIST_MARKER="<!-- netbot-installer-managed -->"
+
+plist_is_ours() { # plist_is_ours <file> <home> -> 0 when the file is NetBot's for that home
+  local f="$1" home="$2"
+  [ -n "${f:-}" ] && [ -n "${home:-}" ] || return 1
+  if [ -L "$f" ]; then return 1; fi
+  [ -f "$f" ] || return 1
+  while [ "$home" != "/" ] && [ "${home%/}" != "$home" ]; do home="${home%/}"; done
+  [ -n "$home" ] && [ "$home" != "/" ] || return 1
+  if grep -F -q -- "$NB_PLIST_MARKER" "$f"; then
+    plist_marked_ours "$f" "$home" || return 1
+    return 0
+  fi
+  plist_legacy_ours "$f" "$home" || return 1
+  return 0
+}
+
+# 0 when a Program or ProgramArguments path must be refused.
+# An argument that is not a path (no slash, and not "." or "..") returns 1,
+# so flags such as -m stay allowed. "." in these patterns is literal.
+plist_program_path_rejected() {
+  local path="$1"
+  case "$path" in
+    .|..|./*|../*|*/*) ;;
+    *) return 1;;
+  esac
+  case "$path" in
+    /*) ;;
+    *) return 0;;
+  esac
+  case "$path" in
+    */../*|*/./*|*/..|*/.) return 0;;
+  esac
+  return 1
+}
+
+plist_marked_ours() { # marker present: every path-like string is inside home, and at least one is
+  local f="$1" home="$2" line rest path inside saw=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    rest="$line"
+    while :; do
+      case "$rest" in
+        *"<string>"*"</string>"*) ;;
+        *) break;;
+      esac
+      rest="${rest#*<string>}"
+      path="${rest%%</string>*}"
+      rest="${rest#*</string>}"
+      if plist_program_path_rejected "$path"; then return 1; fi
+      inside=0
+      if [ "$path" = "$home" ] || [ "${path#"$home/"}" != "$path" ]; then inside=1; saw=1; fi
+      case "$path" in
+        */*) [ "$inside" -eq 1 ] || return 1;;
+      esac
+    done
+  done < "$f"
+  [ "$saw" -eq 1 ]
+}
+
+plist_legacy_ours() { # no marker: exact file name, matching Label, program paths inside home
+  local f="$1" home="$2" base expected line trim rest
+  local mode="out" expect="none" keybuf="" strbuf="" label_val="" saw_label=0 saw_path=0 path
+  base="$(basename -- "$f")"
+  case "$base" in
+    io.netbot.collect.plist) expected="io.netbot.collect";;
+    io.netbot.live.plist) expected="io.netbot.live";;
+    *) return 1;;
+  esac
+  rest=$(cat "$f") || return 1
+  rest="${rest//$'\r'/}"
+  rest="${rest//</$'\n'<}"
+  rest="${rest//>/>$'\n'}"
+  while IFS= read -r line || [ -n "$line" ]; do
+    trim="$line"
+    trim="${trim#"${trim%%[![:space:]]*}"}"
+    trim="${trim%"${trim##*[![:space:]]}"}"
+    case "$mode" in
+      key)
+        case "$trim" in
+          "</key>")
+            keybuf="${keybuf#"${keybuf%%[![:space:]]*}"}"
+            keybuf="${keybuf%"${keybuf##*[![:space:]]}"}"
+            case "$keybuf" in
+              Label) expect="label";;
+              Program) expect="program";;
+              ProgramArguments) expect="args";;
+              *)
+                case "$expect" in
+                  args|label|program) expect="none";;
+                esac
+                ;;
+            esac
+            mode="out"; keybuf=""
+            ;;
+          *) keybuf="${keybuf}${line}";;
+        esac
+        ;;
+      str)
+        case "$trim" in
+          "</string>")
+            path="$strbuf"
+            path="${path#"${path%%[![:space:]]*}"}"
+            path="${path%"${path##*[![:space:]]}"}"
+            case "$expect" in
+              label)
+                if [ "$saw_label" -eq 0 ]; then label_val="$path"; saw_label=1
+                elif [ "$label_val" != "$path" ]; then return 1; fi
+                expect="none"
+                ;;
+              program|args)
+                if plist_program_path_rejected "$path"; then return 1; fi
+                case "$path" in
+                  */*)
+                    if [ "$path" = "$home" ] || [ "${path#"$home/"}" != "$path" ]; then saw_path=1
+                    else return 1; fi
+                    ;;
+                esac
+                [ "$expect" = "program" ] && expect="none"
+                ;;
+            esac
+            mode="out"; strbuf=""
+            ;;
+          *) strbuf="${strbuf}${line}";;
+        esac
+        ;;
+      *)
+        case "$trim" in
+          "<key>") mode="key"; keybuf="";;
+          "<string>") mode="str"; strbuf="";;
+          "</array>") [ "$expect" = "args" ] && expect="none";;
+        esac
+        ;;
+    esac
+  done < <(printf '%s\n' "$rest")
+  [ "$saw_label" -eq 1 ] && [ "$label_val" = "$expected" ] && [ "$saw_path" -eq 1 ]
+}

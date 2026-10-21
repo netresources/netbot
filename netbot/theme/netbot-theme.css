@@ -1,0 +1,228 @@
+/* NetBot mission-control theme. Drop-in stylesheet; load tokens.css first.
+   Class names are documented in STYLE-SPEC.md section 9. Pure CSS, no external requests. */
+
+/* ---------- Page ---------- */
+.nb-page {
+  margin: 0; min-height: 100vh;
+  background-color: var(--nb-bg);
+  background-image:
+    linear-gradient(var(--nb-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--nb-grid) 1px, transparent 1px);
+  background-size: var(--nb-grid-cell) var(--nb-grid-cell);
+  background-position: -1px -1px;
+  color: var(--nb-text);
+  font: 400 var(--nb-fs-body)/1.45 var(--nb-font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+.nb-wrap { max-width: var(--nb-maxw); margin: 0 auto; padding: var(--nb-s5) var(--nb-s5) var(--nb-s7); }
+.nb-page a { color: var(--nb-accent); }
+.nb-page :focus-visible { outline: 2px solid var(--nb-accent); outline-offset: 2px; }
+
+/* ---------- Header ---------- */
+.nb-header {
+  position: relative; overflow: hidden;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: var(--nb-s4);
+  padding: var(--nb-s5) var(--nb-s5) var(--nb-s4);
+  border: var(--nb-border); border-radius: var(--nb-radius);
+  background: linear-gradient(180deg, var(--nb-raised), var(--nb-panel));
+  margin-bottom: var(--nb-s4);
+}
+.nb-header__art { position: absolute; right: 0; top: 0; height: 100%; width: 60%; pointer-events: none; opacity: .9; }
+.nb-header > :not(.nb-header__art) { position: relative; }
+.nb-brand { font: 600 var(--nb-fs-label)/1 var(--nb-font-mono); letter-spacing: .24em; text-transform: uppercase; color: var(--nb-accent); margin: 0 0 var(--nb-s2); }
+.nb-title { font-weight: 600; font-size: 26px; letter-spacing: .02em; line-height: 1.15; margin: 0; }
+.nb-title .nb-brand { display: block; }
+.nb-title__name { display: block; }
+.nb-subtitle, .nb-clock { color: var(--nb-text-3); font: 500 var(--nb-fs-small)/1.4 var(--nb-font-mono); letter-spacing: .06em; text-transform: uppercase; margin: var(--nb-s2) 0 0; }
+.nb-clock { text-align: right; white-space: nowrap; }
+.nb-clock b { display: block; color: var(--nb-text); font-size: 20px; font-weight: 500; letter-spacing: .04em; }
+
+/* ---------- Example-data banner (warn treatment: color + icon + words) ---------- */
+.nb-banner {
+  display: flex; align-items: center; gap: var(--nb-s3);
+  padding: var(--nb-s2) var(--nb-s4); margin-bottom: var(--nb-s4);
+  border: 1px solid var(--nb-warn); border-left-width: 4px; border-radius: var(--nb-radius);
+  background: rgba(245, 184, 61, .08); color: var(--nb-warn);
+  font: 600 var(--nb-fs-small)/1.3 var(--nb-font-mono); letter-spacing: .12em; text-transform: uppercase;
+}
+
+/* Offline snapshot banner. Token colors only; the live page's lost banner reuses the same shell. */
+.nb-statebar { display: flex; align-items: flex-start; gap: var(--nb-s3); padding: var(--nb-s3) var(--nb-s4); margin-bottom: var(--nb-s4);
+  border: 1px solid var(--nb-control); border-left-width: 4px; border-radius: var(--nb-radius); background: var(--nb-panel); }
+.nb-statebar p { margin: 0; flex: 1; color: var(--nb-text); font: 500 var(--nb-fs-body)/1.45 var(--nb-font-ui); }
+.nb-statebar b { font-weight: 600; }
+.nb-statebar__sub { display: block; color: var(--nb-text-2); font-size: var(--nb-fs-small); margin-top: 2px; }
+.nb-statebar__mark { flex: none; width: 10px; height: 10px; margin-top: 6px; }
+.nb-statebar--offline { border-color: var(--nb-text-3); }
+.nb-statebar--offline .nb-statebar__mark { border: 2px solid var(--nb-text-2); box-sizing: border-box; }
+
+/* ---------- Section headings ---------- */
+.nb-section { margin-top: var(--nb-s6); }
+.nb-section__label {
+  display: flex; align-items: center; gap: var(--nb-s3); margin: 0 0 var(--nb-s3);
+  font: 600 var(--nb-fs-label)/1 var(--nb-font-mono); letter-spacing: .18em; text-transform: uppercase; color: var(--nb-text-2);
+}
+.nb-section__label::after { content: ""; flex: 1; height: 1px; background: var(--nb-hairline); }
+.nb-section__label small { color: var(--nb-text-3); font-weight: 500; letter-spacing: .1em; }
+
+/* ---------- Telemetry readouts (big numerals) ---------- */
+.nb-readouts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--nb-gutter); }
+.nb-readout {
+  position: relative; padding: var(--nb-s4) var(--nb-s4) var(--nb-s3);
+  background: var(--nb-panel); border: var(--nb-border); border-radius: var(--nb-radius);
+  border-top: 2px solid var(--nb-st, var(--nb-hairline));
+  min-width: 0;
+}
+.nb-readout__head { display: flex; justify-content: space-between; align-items: center; gap: var(--nb-s2); }
+.nb-label { font: 600 var(--nb-fs-label)/1.2 var(--nb-font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--nb-text-3); }
+.nb-readout__value { display: flex; align-items: baseline; gap: var(--nb-s2); margin: var(--nb-s3) 0 var(--nb-s1); }
+.nb-num { font: 300 var(--nb-fs-numeral)/1 var(--nb-font-mono); letter-spacing: -.02em; color: var(--nb-text); font-variant-numeric: tabular-nums; }
+.nb-unit { font: 600 var(--nb-fs-unit)/1 var(--nb-font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--nb-text-2); }
+.nb-readout__detail { color: var(--nb-text-2); font-size: var(--nb-fs-small); font-family: var(--nb-font-mono); margin: 0; overflow-wrap: anywhere; }
+.nb-readout__bar { height: 3px; background: var(--nb-grid); margin-top: var(--nb-s3); }
+.nb-readout__bar i { display: block; height: 100%; background: var(--nb-accent); }
+
+/* ---------- Status lights: color + shape + word, never color alone ---------- */
+.nb-status { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font: 700 var(--nb-fs-label)/1 var(--nb-font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--nb-st); }
+.nb-light { width: var(--nb-light); height: var(--nb-light); flex: none; background: var(--nb-st); }
+.nb-st-ok     { --nb-st: var(--nb-ok); }
+.nb-st-warn   { --nb-st: var(--nb-warn); }
+.nb-st-alert  { --nb-st: var(--nb-alert); }
+.nb-st-nodata { --nb-st: var(--nb-nodata); }
+.nb-st-ok     .nb-light { border-radius: 50%; box-shadow: 0 0 8px rgba(55, 164, 132, .55); }          /* circle   */
+.nb-st-warn   .nb-light { clip-path: polygon(50% 0, 100% 100%, 0 100%); width: 12px; height: 11px; } /* triangle */
+.nb-st-alert  .nb-light { transform: rotate(45deg) scale(.85); box-shadow: 0 0 10px rgba(255, 92, 92, .7);
+                          animation: nb-blink 1.2s steps(2, jump-none) infinite; }                     /* diamond  */
+.nb-st-nodata .nb-light { background: transparent; border: 2px solid var(--nb-st); border-radius: 50%; box-sizing: border-box; } /* ring */
+@keyframes nb-blink { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .nb-st-alert .nb-light { animation: none; } }
+
+/* ---------- Systems list (text-only tiles: dish health, firmware, router, collector) ---------- */
+.nb-systems { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--nb-gutter); margin-top: var(--nb-gutter); }
+.nb-system { display: grid; grid-template-columns: 1fr auto; gap: var(--nb-s1) var(--nb-s3); align-items: center;
+  padding: var(--nb-s3) var(--nb-s4); background: var(--nb-panel); border: var(--nb-border); border-left: 3px solid var(--nb-st); border-radius: var(--nb-radius); min-width: 0; }
+.nb-system__name { font-weight: 600; font-size: var(--nb-fs-body); color: var(--nb-text); }
+.nb-system__text { grid-column: 1 / -1; font: 400 var(--nb-fs-small)/1.4 var(--nb-font-mono); color: var(--nb-text-2); overflow-wrap: anywhere; white-space: pre-line; }
+
+/* ---------- Charts (inline SVG or <img> of the matplotlib PNG) ---------- */
+.nb-charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--nb-gutter); }
+.nb-charts--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.nb-chart { background: var(--nb-panel); border: var(--nb-border); border-radius: var(--nb-radius); padding: var(--nb-s3) var(--nb-s4) var(--nb-s2); min-width: 0; }
+.nb-chart__head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--nb-s2); margin-bottom: var(--nb-s2); }
+.nb-chart__title { font-size: var(--nb-fs-small); font-weight: 600; color: var(--nb-text); }
+.nb-chart__meta  { font: 500 var(--nb-fs-label)/1 var(--nb-font-mono); color: var(--nb-text-3); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+.nb-chart svg, .nb-chart img { display: block; width: 100%; height: auto; }
+.nb-chart-gridline { stroke: var(--nb-grid); stroke-width: 1; shape-rendering: crispEdges; }
+.nb-chart-axis     { stroke: var(--nb-line); stroke-width: 1; shape-rendering: crispEdges; }
+.nb-chart-tick     { fill: var(--nb-text-3); font: 500 10px var(--nb-font-mono); }
+.nb-chart-line     { fill: none; stroke: var(--nb-metric, var(--nb-accent)); stroke-width: 1.5; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.nb-chart-area     { fill: var(--nb-metric, var(--nb-accent)); fill-opacity: var(--nb-metric-fill-opacity); stroke: none; }
+.nb-chart-ref      { stroke: var(--nb-text-3); stroke-width: 1; stroke-dasharray: 3 4; }
+.nb-chart-empty    { fill: var(--nb-text-3); font: 500 12px var(--nb-font-mono); letter-spacing: .1em; }
+
+
+/* ---------- Core / add-on structure ---------- */
+.nb-readouts--5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.nb-readouts--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.nb-num--word { font-size: 24px; font-weight: 500; letter-spacing: .04em; line-height: 1.15; min-height: 44px; display: flex; align-items: center; }  /* state words in the numeral slot */
+.nb-charts--1 { grid-template-columns: 1fr; }
+.nb-readout__sub { margin: 0 0 var(--nb-s1); font: 500 var(--nb-fs-small)/1.3 var(--nb-font-mono); color: var(--nb-text-2); letter-spacing: .04em; }
+.nb-readout__sub b { color: var(--nb-text); font-weight: 500; }
+.nb-addon { margin-top: var(--nb-s6); padding: var(--nb-s4); border: 1px dashed var(--nb-control); border-radius: var(--nb-radius);
+  background: rgba(12, 17, 23, .55); }
+.nb-addon > .nb-section__label { margin-bottom: var(--nb-s4); }
+.nb-addon .nb-systems { margin-top: 0; }
+.nb-addon .nb-readouts + .nb-charts { margin-top: var(--nb-gutter); }
+.nb-addon .nb-charts { margin-top: var(--nb-gutter); }
+.nb-only-narrow { display: none !important; }
+.nb-tag { white-space: nowrap; flex: none; display: inline-flex; align-items: center; padding: 3px 6px; border: 1px solid var(--nb-accent); color: var(--nb-accent);
+  font: 700 10px/1 var(--nb-font-mono); letter-spacing: .14em; text-transform: uppercase; border-radius: var(--nb-radius); }
+.nb-chips { display: flex; flex-wrap: wrap; gap: var(--nb-s2); margin-top: var(--nb-s3); }
+.nb-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--nb-control); border-radius: var(--nb-radius);
+  font: 600 var(--nb-fs-label)/1 var(--nb-font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--nb-text-2); }
+.nb-chip::before { content: ""; width: 7px; height: 7px; border-radius: 0; border: 1.5px solid var(--nb-text-3); box-sizing: border-box; }  /* square: round dots are reserved for the OK light */
+.nb-chip--on { border-color: var(--nb-accent); color: var(--nb-text); }
+.nb-chip--on::before { background: var(--nb-accent); border-color: var(--nb-accent); }
+
+
+/* ---------- Data source marks (DISH / DISH · CALC / CALC / ROUTER) ---------- */
+.nb-readout { display: flex; flex-direction: column; }
+.nb-readout__foot { margin-top: auto; padding-top: var(--nb-s3); }
+.nb-src { display: inline-block; padding: 2px 5px; border: 1px solid var(--nb-control); color: var(--nb-text-2);
+  font: 700 10px/1.2 var(--nb-font-mono); letter-spacing: .12em; text-transform: uppercase; border-radius: var(--nb-radius); white-space: nowrap; }
+.nb-src--calc { border-style: dashed; border-color: var(--nb-accent); color: var(--nb-accent); }
+.nb-legend { list-style: none; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; margin: 0 0 var(--nb-s4); color: var(--nb-text-3); font: 500 var(--nb-fs-small)/1.4 var(--nb-font-ui); }
+.nb-legend li { display: inline-flex; align-items: center; gap: 8px; }
+.nb-readout--wide { grid-column: span 2; }
+.nb-readout--wide-3 { grid-column: span 3; }   /* Dish alerts: fills the dish row (6 panels in 4 columns) */
+.nb-st-info { color: var(--nb-text-3); }
+.nb-watch { list-style: none; margin: var(--nb-s3) 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; }
+.nb-watch li { display: flex; justify-content: space-between; gap: 6px; font: 500 11px/1.5 var(--nb-font-mono); color: var(--nb-text-3); border-bottom: 1px solid var(--nb-grid); }
+.nb-watch em { font-style: normal; font-size: 9px; letter-spacing: .1em; color: var(--nb-text-3); }
+.nb-watch--on, .nb-watch--on em { color: var(--nb-text); }
+
+/* ---------- Metric colors (chart line + fill + panel key). Status lights never use these. ---------- */
+.nb-m-latency          { --nb-metric: var(--metric-latency); }
+.nb-m-ping-drop        { --nb-metric: var(--metric-ping-drop); }
+.nb-m-throughput       { --nb-metric: var(--metric-throughput); }
+.nb-m-obstruction      { --nb-metric: var(--metric-obstruction); }
+.nb-m-gateway-ping     { --nb-metric: var(--metric-gateway-ping); }
+.nb-m-internet-latency { --nb-metric: var(--metric-internet-latency); }
+.nb-m-packet-loss      { --nb-metric: var(--metric-packet-loss); }
+.nb-m-speed-test       { --nb-metric: var(--metric-speed-test); }
+.nb-m-router-devices   { --nb-metric: var(--metric-router-devices); }
+/* Key: a short 16x3 bar (never a dot, so it cannot pass for a status light). Sits before the panel or chart label. */
+.nb-key { display: inline-block; flex: none; width: 16px; height: 3px; background: var(--nb-metric); vertical-align: middle; margin-right: 8px; }
+.nb-readout__head .nb-label, .nb-chart__title { display: inline-flex; align-items: center; }
+
+/* ---------- Line art ---------- */
+.nb-orbit { stroke: var(--nb-accent); fill: none; }
+.nb-orbit--faint { stroke: var(--nb-hairline); }
+
+/* ---------- Footer ---------- */
+.nb-footer { margin-top: var(--nb-s6); padding-top: var(--nb-s3); border-top: var(--nb-border);
+  display: flex; justify-content: space-between; gap: var(--nb-s4); flex-wrap: wrap;
+  color: var(--nb-text-3); font: 500 var(--nb-fs-label)/1.5 var(--nb-font-mono); letter-spacing: .12em; text-transform: uppercase; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1100px) {
+  .nb-readout--wide-3, .nb-readout--row-narrow { grid-column: 1 / -1; }   /* keeps the 2-column dish grid even */
+  .nb-readouts, .nb-charts--4, .nb-readouts--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nb-readouts--5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .nb-charts, .nb-systems { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  :root { --nb-fs-numeral: 34px; --nb-gutter: 12px; }
+  .nb-num--word { font-size: 16px; min-height: 34px; }
+  .nb-section__label small { display: none; }   /* the chart titles carry the same detail */
+  .nb-only-wide { display: none !important; }
+  .nb-only-narrow { display: block !important; }
+  .nb-wrap { padding: var(--nb-s3) var(--nb-s3) var(--nb-s6); }
+  .nb-header { flex-direction: column; align-items: flex-start; padding: var(--nb-s4); }
+  .nb-header__art { width: 100%; opacity: .45; }
+  .nb-clock { text-align: left; }
+  .nb-title { font-size: 22px; }
+  .nb-readouts, .nb-readouts--5, .nb-readouts--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nb-readout { padding: var(--nb-s3); }
+  .nb-addon { padding: var(--nb-s3); }
+  .nb-watch { grid-template-columns: 1fr 1fr; }
+  .nb-charts, .nb-charts--4, .nb-systems { grid-template-columns: 1fr; }
+  .nb-readout--wide, .nb-readout--wide-3 { grid-column: 1 / -1; }
+  .nb-key { width: 12px; margin-right: 6px; }
+}
+@media (max-width: 430px) {
+  .nb-header > div { min-width: 0; max-width: 100%; }
+  .nb-readouts, .nb-readouts--5, .nb-readouts--3, .nb-charts, .nb-charts--4, .nb-systems, .nb-watch {
+    grid-template-columns: 1fr;
+  }
+  .nb-readout__head, .nb-chart__head, .nb-chart__title, .nb-label, .nb-system__name, .nb-title__name {
+    min-width: 0; max-width: 100%;
+  }
+  .nb-chart__title, .nb-label, .nb-system__name, .nb-title__name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .nb-watch li { flex-wrap: nowrap; min-width: 0; white-space: nowrap; }
+  .nb-watch li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nb-watch em { flex: none; }
+}

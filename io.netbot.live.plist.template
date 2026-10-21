@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- netbot-installer-managed -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>io.netbot.live</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__HOME__/venv/bin/python</string>
+    <string>-m</string>
+    <string>netbot.live_server</string>
+  </array>
+  <key>WorkingDirectory</key><string>__HOME__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPATH</key><string>__HOME__</string>
+    <key>NETBOT_CONFIG</key><string>__HOME__/config.toml</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>__HOME__/logs/live.out.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/logs/live.err.log</string>
+</dict>
+</plist>

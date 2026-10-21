@@ -1,0 +1,5 @@
+# Packages the Windows installer tests let pip install, fetched into the local wheel cache by fetch-wheels.sh.
+# The tests use a fake dish library whose requirements.txt is empty and set NETBOT_PIP_EXTRA='' and
+# NETBOT_SKIP_PIP_UPGRADE=1, so only pip itself is listed (for a run without NETBOT_SKIP_PIP_UPGRADE).
+# Add a pinned line here if a test starts installing a real package.
+pip

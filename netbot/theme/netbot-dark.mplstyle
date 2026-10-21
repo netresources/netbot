@@ -1,0 +1,66 @@
+# NetBot mission-control theme for matplotlib (used by build_png in make_dashboard.py).
+# Use:  plt.style.use("/path/to/netbot-dark.mplstyle")   (matplotlib >= 3.3)
+# Each metric has its own line color (same hexes as the --metric-* tokens in tokens.css).
+# .mplstyle files only hold rcParams, so the named map lives here as comments and, usable,
+# as METRIC in mpl_rcparams_snippet.py. Always pass color=METRIC[name]; never rely on the cycle.
+# Status colors and the accent green are never used for data lines.
+# Named metric map (prop_cycle order):
+#   0  latency           #3DA5FF
+#   1  ping-drop         #FF66B8
+#   2  throughput        #B8F1FF
+#   3  obstruction       #E9C0A5
+#   4  gateway-ping      #517AEC
+#   5  internet-latency  #B8CBFF
+#   6  packet-loss       #F49AB2
+#   7  speed-test        #EEF1C6
+#   8  router-devices    #D147B6
+figure.facecolor:      06080B
+figure.edgecolor:      06080B
+figure.titlesize:      16
+figure.titleweight:    semibold
+savefig.facecolor:     06080B
+savefig.edgecolor:     06080B
+
+axes.facecolor:        0C1117
+axes.edgecolor:        263241
+axes.linewidth:        0.8
+axes.labelcolor:       A7B2C0
+axes.titlecolor:       F2F5F8
+axes.titlesize:        9.5
+axes.titleweight:      semibold
+axes.titlelocation:    left
+axes.titlepad:         8
+axes.labelsize:        8
+axes.grid:             True
+axes.axisbelow:        True
+axes.spines.top:       False
+axes.spines.right:     False
+axes.prop_cycle:       cycler('color', ['3DA5FF', 'FF66B8', 'B8F1FF', 'E9C0A5', '517AEC', 'B8CBFF', 'F49AB2', 'EEF1C6', 'D147B6'])
+
+grid.color:            1A222C
+grid.linewidth:        0.8
+grid.linestyle:        -
+grid.alpha:            1.0
+
+lines.linewidth:       1.2
+lines.solid_joinstyle: round
+lines.antialiased:     True
+
+xtick.color:           33414F
+ytick.color:           33414F
+xtick.labelcolor:      7B8796
+ytick.labelcolor:      7B8796
+xtick.labelsize:       7
+ytick.labelsize:       7
+xtick.major.size:      3
+ytick.major.size:      0
+xtick.direction:       out
+
+text.color:            F2F5F8
+font.family:           sans-serif
+font.sans-serif:       Inter, Helvetica Neue, Helvetica, Segoe UI, DejaVu Sans, Arial, sans-serif
+font.monospace:        IBM Plex Mono, Menlo, Consolas, DejaVu Sans Mono, monospace
+font.size:             9
+
+legend.frameon:        False
+legend.labelcolor:     A7B2C0

@@ -1,0 +1,131 @@
+/* NetBot live page. Load after tokens.css and netbot-theme.css.
+   State is set on <body data-live="live|stale|lost">. Colors are theme tokens, plus the one accent-hover shade. */
+
+/* ---------- State visibility ---------- */
+[data-show] { display: none; }
+[data-live="lost"] [data-show="lost"], [data-live="offline"] [data-show="offline"] { display: flex; }
+[data-live="offline"] [data-hide="offline"] { display: none !important; }
+[hidden] { display: none !important; }
+
+/* ---------- Header: live indicator ---------- */
+.nb-live-page .nb-header__art text { display: none; }   /* the art's small caption would collide with the live box */
+.nb-header__right { display: flex; flex-direction: column; align-items: flex-end; gap: var(--nb-s3); }
+.nb-livebox { text-align: right; }
+.nb-live { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 6px 10px;
+  border: 1px solid var(--nb-accent); border-radius: var(--nb-radius); background: rgba(6, 8, 11, .6);
+  font: 600 var(--nb-fs-small)/1 var(--nb-font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--nb-text); white-space: nowrap; }
+.nb-live b { font-weight: 600; color: var(--nb-text); font-variant-numeric: tabular-nums; }
+.nb-live__word { color: var(--nb-accent); font-weight: 700; letter-spacing: .16em; }
+.nb-live__sep { color: var(--nb-text-3); }
+.nb-live__meta { margin: 6px 0 0; color: var(--nb-text-3); font: 500 var(--nb-fs-label)/1.3 var(--nb-font-mono); letter-spacing: .08em; text-transform: uppercase; }
+/* Mark: an accent SQUARE with a square "sweep" outline. Never round, so it can't pass for the OK light. */
+.nb-live__mark { position: relative; flex: none; width: 8px; height: 8px; background: var(--nb-accent); }
+.nb-live__mark::after { content: ""; position: absolute; inset: -4px; border: 1px solid var(--nb-accent); opacity: 0; animation: nb-sweep 2.4s ease-out infinite; }
+@keyframes nb-sweep { 0% { transform: scale(.6); opacity: .8; } 70%, 100% { transform: scale(1.5); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .nb-live__mark::after { animation: none; opacity: 0; } }
+
+/* Stale: warning treatment (triangle + STALE), same level as the collector-stale tile */
+[data-live="stale"] .nb-live { border-color: var(--nb-warn); }
+[data-live="stale"] .nb-live__word { color: var(--nb-warn); }
+[data-live="stale"] .nb-live__mark { width: 12px; height: 11px; background: var(--nb-warn); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+/* Lost: alert treatment (diamond + NOT CONNECTED), no pulse */
+[data-live="lost"] .nb-live { border-color: var(--nb-alert); }
+[data-live="lost"] .nb-live__word { color: var(--nb-alert); }
+[data-live="lost"] .nb-live__mark { background: var(--nb-alert); transform: rotate(45deg) scale(.85); }
+[data-live="stale"] .nb-live__mark::after, [data-live="lost"] .nb-live__mark::after { display: none; }
+
+/* ---------- State banners (lost, offline) ---------- */
+.nb-statebar { display: flex; align-items: flex-start; gap: var(--nb-s3); padding: var(--nb-s3) var(--nb-s4); margin-bottom: var(--nb-s4);
+  border: 1px solid var(--nb-control); border-left-width: 4px; border-radius: var(--nb-radius); background: var(--nb-panel); }
+.nb-statebar p { margin: 0; flex: 1; color: var(--nb-text); font: 500 var(--nb-fs-body)/1.45 var(--nb-font-ui); }
+.nb-statebar b { font-weight: 600; }
+.nb-statebar__sub { display: block; color: var(--nb-text-2); font-size: var(--nb-fs-small); margin-top: 2px; }
+.nb-statebar__mark { flex: none; width: 10px; height: 10px; margin-top: 6px; }
+.nb-statebar__word { flex: none; align-self: center; font: 700 var(--nb-fs-label)/1 var(--nb-font-mono); letter-spacing: .14em; }
+.nb-statebar--lost { border-color: var(--nb-alert); background: rgba(255, 92, 92, .07); }
+.nb-statebar--lost .nb-statebar__mark { background: var(--nb-alert); transform: rotate(45deg) scale(.85); }
+.nb-statebar--lost .nb-statebar__word { color: var(--nb-alert); }
+.nb-statebar--offline { border-color: var(--nb-text-3); }
+.nb-statebar--offline .nb-statebar__mark { border: 2px solid var(--nb-text-2); box-sizing: border-box; }   /* hollow square: information */
+/* "retrying" dots: three squares stepping; static under reduced motion */
+.nb-retry { display: inline-block; width: 18px; height: 4px; margin-left: 4px; vertical-align: middle;
+  background: linear-gradient(90deg, var(--nb-alert) 0 4px, transparent 4px 7px, var(--nb-alert) 7px 11px, transparent 11px 14px, var(--nb-alert) 14px 18px);
+  animation: nb-step 1.2s steps(3, end) infinite; }
+@keyframes nb-step { 0% { clip-path: inset(0 14px 0 0); } 100% { clip-path: inset(0 -4px 0 0); } }
+@media (prefers-reduced-motion: reduce) { .nb-retry { animation: none; } }
+
+/* Lost: keep the last values, dimmed. Numerals drop to text-2 (8.8:1), labels stay text-3 (5.2:1), charts lose color. */
+[data-live="lost"] .nb-data .nb-num { color: var(--nb-text-2); }
+[data-live="lost"] .nb-data .nb-chart svg, [data-live="lost"] .nb-data .nb-key { filter: saturate(.15); opacity: .55; }
+[data-live="lost"] .nb-data .nb-readout { border-top-color: var(--nb-hairline); }
+[data-live="lost"] .nb-data .nb-status { color: var(--nb-text-3); }
+[data-live="lost"] .nb-data .nb-light { filter: saturate(0); opacity: .6; animation: none; box-shadow: none; }
+[data-live="lost"] .nb-chip, [data-live="lost"] .nb-chip--on { color: var(--nb-text-3); border-color: var(--nb-control); }
+[data-live="lost"] .nb-chip--on::before { background: transparent; border-color: var(--nb-text-3); }
+[data-live="lost"] .nb-src, [data-live="lost"] .nb-src--calc { color: var(--nb-text-3); border-color: var(--nb-control); }
+.nb-lastknown { display: none; margin: 0 0 var(--nb-s3); color: var(--nb-text-2); font: 600 var(--nb-fs-label)/1 var(--nb-font-mono); letter-spacing: .14em; text-transform: uppercase; }
+[data-live="lost"] .nb-lastknown { display: block; }
+
+/* ---------- Access strip: home Wi-Fi badge + private link ---------- */
+.nb-access { display: flex; flex-wrap: wrap; align-items: center; gap: var(--nb-s3) var(--nb-s5); margin-bottom: var(--nb-s4);
+  padding: var(--nb-s3) var(--nb-s4); background: var(--nb-panel); border: var(--nb-border); border-radius: var(--nb-radius); }
+.nb-wifi { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 6px 10px; border: 1px solid var(--nb-accent); border-radius: var(--nb-radius);
+  font: 600 var(--nb-fs-label)/1 var(--nb-font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--nb-text-2); white-space: nowrap; }
+.nb-wifi__state { color: var(--nb-text); font-weight: 700; letter-spacing: .16em; }
+.nb-sq { flex: none; width: 8px; height: 8px; background: var(--nb-accent); }
+.nb-wifi.is-off { border-color: var(--nb-control); }
+.nb-wifi.is-off .nb-sq { background: transparent; border: 1.5px solid var(--nb-text-3); box-sizing: border-box; }
+.nb-link { display: flex; flex-wrap: wrap; align-items: center; gap: var(--nb-s2) var(--nb-s3); flex: 1; min-width: 0; margin: 0; }
+.nb-link__url { flex: 0 1 auto; min-width: 0; padding: 6px 10px; background: var(--nb-bg); border: 1px solid var(--nb-control); border-radius: var(--nb-radius);
+  font: 500 var(--nb-fs-small)/1.3 var(--nb-font-mono); color: var(--nb-text); overflow-wrap: anywhere; }
+.nb-link__note { flex-basis: 100%; margin: 0; color: var(--nb-text-3); font: 400 var(--nb-fs-small)/1.4 var(--nb-font-ui); }
+.nb-link--off { color: var(--nb-text-2); font: 400 var(--nb-fs-body)/1.45 var(--nb-font-ui); }
+.nb-link--off b { color: var(--nb-text); }
+.nb-btn { padding: 6px 14px; border: 1px solid var(--nb-accent); border-radius: var(--nb-radius); background: var(--nb-accent); color: var(--nb-bg);
+  font: 600 var(--nb-fs-small)/1.2 var(--nb-font-ui); cursor: pointer; }
+.nb-btn:hover { background: #8AF7A4; }
+.nb-btn--ghost { background: transparent; color: var(--nb-text); border-color: var(--nb-control); }
+.nb-btn--ghost:hover { background: var(--nb-raised); }
+.nb-btn:focus-visible { outline: 2px solid var(--nb-accent); outline-offset: 2px; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 600px) {
+  .nb-header__right { align-items: flex-start; width: 100%; }
+  .nb-livebox { text-align: left; }
+  .nb-live { white-space: normal; flex-wrap: wrap; row-gap: 4px; }
+  .nb-access { padding: var(--nb-s3); flex-direction: column; align-items: flex-start; }
+  .nb-link { flex-basis: auto; width: 100%; }
+  .nb-link__url { flex-basis: 100%; }
+  .nb-statebar { padding: var(--nb-s3); }
+}
+/* The age reads as a sentence ("last sample 42 s ago"), so it is not uppercased; the state word stays uppercase. */
+.nb-live__age { text-transform: none; letter-spacing: .02em; font-weight: 500; color: var(--nb-text); }
+.nb-link--off { display: block; flex: 1; }
+[data-live="lost"] .nb-lastknown { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 var(--nb-s4); padding: 4px 8px;
+  border: 1px dashed var(--nb-control); border-radius: var(--nb-radius); }
+@media (max-width: 600px) { .nb-statebar__word { display: none; } }   /* the sentence already says "Retrying" */
+
+/* Chart library structure (the upstream stylesheet is not shipped). Colors are tokens.
+   Cards clip their plot. min-width: 0 lets a grid column shrink to the track instead of the canvas. */
+.nb-charts, .nb-charts--4, .nb-charts--1, .nb-addon { min-width: 0; }
+/* The theme's <=1100px rule sets .nb-charts to 2 columns and ties .nb-charts--1,
+   which squeezed the full-width router chart into half a row. Two classes win. */
+.nb-charts.nb-charts--1 { grid-template-columns: minmax(0, 1fr); }
+.nb-chart { min-width: 0; max-width: 100%; overflow: hidden; }
+.nb-plot { position: relative; width: 100%; min-width: 0; max-width: 100%; min-height: 160px; margin-top: var(--nb-s2); overflow: hidden; }
+.nb-chart__empty { display: flex; align-items: center; justify-content: center; min-height: 160px; margin: 0;
+  color: var(--nb-text-3); font: 600 var(--nb-fs-label)/1 var(--nb-font-mono); letter-spacing: .14em; text-transform: uppercase; }
+.uplot, .uplot *, .uplot *:before, .uplot *:after { box-sizing: border-box; }
+.uplot { font-family: var(--nb-font-mono); line-height: 1.5; width: 100%; max-width: 100%; overflow: hidden; color: var(--nb-text-2); }
+.u-wrap { position: relative; user-select: none; }
+.u-over, .u-under { position: absolute; left: 0; top: 0; }
+.u-under { overflow: hidden; }
+/* Bitmap size is width * devicePixelRatio. Without a CSS size the canvas paints at bitmap size and overflows the card. */
+.uplot canvas { display: block; position: relative; width: 100%; height: 100%; }
+.u-axis { position: absolute; }
+.u-select { position: absolute; pointer-events: none; background: var(--nb-accent-dim); }
+.u-off { display: none !important; }
+.u-cursor-x, .u-cursor-y, .u-cursor-pt { position: absolute; left: 0; top: 0; pointer-events: none; display: none !important; }
+.u-legend { font-size: var(--nb-fs-label); color: var(--nb-text-2); }
+.nb-chart .uplot { margin-top: 0; }
+[data-live="lost"] .nb-data .uplot, [data-live="lost"] .nb-data .nb-chart__empty { filter: saturate(.15); opacity: .55; }

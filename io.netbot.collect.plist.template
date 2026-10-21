@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- netbot-installer-managed -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>io.netbot.collect</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__HOME__/venv/bin/python</string>
+    <string>__HOME__/netbot/collect.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>__HOME__/netbot</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>NETBOT_CONFIG</key><string>__HOME__/config.toml</string></dict>
+  <key>StartInterval</key><integer>300</integer>
+  <key>RunAtLoad</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>__HOME__/logs/collect.out.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/logs/collect.err.log</string>
+</dict>
+</plist>
