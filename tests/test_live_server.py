@@ -12,7 +12,8 @@ import make_dashboard     # noqa: E402
 import theme_tokens as TH  # noqa: E402
 import ui_text as T       # noqa: E402
 
-NOW = time.mktime((2026, 10, 19, 6, 45, 0, 0, 0, -1))
+# Wall clock. Example-data detection keeps rows from the last 7 days of real time.
+NOW = time.time()
 SENTINEL = "SENTINEL-OUTSIDE-FILE"
 EXT_URL = re.compile(r"https?://", re.I)
 IPV4 = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}")

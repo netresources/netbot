@@ -594,6 +594,187 @@ refuse_planted_plist legacy-dotslash
 plant_program_plist legacy "$NETBOT_HOME/.."
 refuse_planted_plist legacy-trailing-dotdot
 
+echo "==== 16b. program executable must be an absolute path inside the home"
+# argv0 (or the Program string, when that key is present) must be absolute and
+# strictly inside this home. A bare name is not ours, in marked or legacy mode.
+# Later arguments keep the old rule, so these plants would have been accepted
+# before: the trailing path is inside the home, and -c / "..." are not paths.
+# "..." is the command string; it has no slash, so only the bare executable
+# makes the plist foreign.
+plant_args_plist() { # plant_args_plist <marked|legacy> <program|-> <arg>...
+  local mode="$1" program="$2" marker="" program_xml="" args_xml="" arg
+  shift 2
+  rm -f "$PLIST"
+  if [ "$mode" = marked ]; then marker="  <!-- netbot-installer-managed -->"; fi
+  if [ "$program" != "-" ]; then
+    program_xml="  <key>Program</key><string>${program}</string>"
+  fi
+  for arg in "$@"; do
+    args_xml="${args_xml}    <string>${arg}</string>"$'\n'
+  done
+  cat > "$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+$marker
+  <!-- planted-args -->
+$program_xml
+  <key>Label</key><string>io.netbot.collect</string>
+  <key>ProgramArguments</key>
+  <array>
+${args_xml}  </array>
+</dict></plist>
+EOF
+}
+mkdir -p "$NETBOT_LAUNCH_AGENTS"
+plant_args_plist marked - python "$NETBOT_HOME/x"
+refuse_planted_plist marked-argv0-python
+plant_args_plist legacy - python "$NETBOT_HOME/x"
+refuse_planted_plist legacy-argv0-python
+plant_args_plist marked - bash -c "..." "$NETBOT_HOME/x"
+refuse_planted_plist marked-argv0-bash
+plant_args_plist legacy - bash -c "..." "$NETBOT_HOME/x"
+refuse_planted_plist legacy-argv0-bash
+plant_args_plist marked python python "$NETBOT_HOME/x"
+refuse_planted_plist marked-program-python
+plant_args_plist legacy python python "$NETBOT_HOME/x"
+refuse_planted_plist legacy-program-python
+# Program is the executable when the key is present, even if argv0 is inside the home.
+plant_args_plist marked python "$NETBOT_HOME/venv/bin/python" "$NETBOT_HOME/x"
+refuse_planted_plist marked-program-not-argv0
+plant_args_plist legacy python "$NETBOT_HOME/venv/bin/python" "$NETBOT_HOME/x"
+refuse_planted_plist legacy-program-not-argv0
+# Accepted: absolute venv python as argv0. Install replaces this legacy plist.
+plant_args_plist legacy - "$NETBOT_HOME/venv/bin/python" "$NETBOT_HOME/netbot/collect.py"
+cp "$PLIST" "$T/argv0-ok.before"
+printf '0\nn\nn\n' | bash "$PKG/install.sh" > "$T/argv0-ok.log" 2>&1 || fail "absolute argv0 install exits 0" "$T/argv0-ok.log"
+check "absolute argv0: install replaced the collect plist" bash -c "! cmp -s '$PLIST' '$T/argv0-ok.before'"
+check "absolute argv0: collect plist is marked" grep -F -q 'netbot-installer-managed' "$PLIST"
+check "absolute argv0: planted sentinel gone" bash -c "! grep -F -q 'planted-args' '$PLIST'"
+check "absolute argv0: collect plist points at this home" grep -F -q "$NETBOT_HOME/" "$PLIST"
+check "absolute argv0: live plist is marked" grep -F -q 'netbot-installer-managed' "$LIVE_PLIST"
+check "absolute argv0: live plist points at this home" grep -F -q "$NETBOT_HOME" "$LIVE_PLIST"
+printf 'y\n' | bash "$PKG/uninstall.sh" > "$T/argv0-ok-un.log" 2>&1 || fail "absolute argv0 uninstall exits 0" "$T/argv0-ok-un.log"
+check "absolute argv0: uninstall removed both plists" test ! -e "$PLIST" -a ! -e "$LIVE_PLIST"
+check "absolute argv0: uninstall removed the home" test ! -e "$NETBOT_HOME"
+
+echo "==== 16c. XML entities, CDATA, and a repeated ProgramArguments key"
+# launchd decodes entities and CDATA and uses the last ProgramArguments array.
+# "&" in any key or string, "<![CDATA[" anywhere, or a second ProgramArguments
+# key is not ours. &#46; is a dot. &#103; is the letter g. Install must not
+# replace a refused file. Uninstall must leave it.
+accept_planted_plist() { # accept_planted_plist <name>
+  local name="$1"
+  cp "$PLIST" "$T/${name}.before"
+  printf '0\nn\nn\n' | bash "$PKG/install.sh" > "$T/${name}.log" 2>&1 || fail "$name install exits 0" "$T/${name}.log"
+  check "$name: install replaced the collect plist" bash -c "! cmp -s '$PLIST' '$T/${name}.before'"
+  check "$name: collect plist is marked" grep -F -q 'netbot-installer-managed' "$PLIST"
+  check "$name: planted sentinel gone" bash -c "! grep -F -q 'planted-args' '$PLIST'"
+  check "$name: collect plist points at this home" grep -F -q "$NETBOT_HOME/" "$PLIST"
+  check "$name: live plist is marked" grep -F -q 'netbot-installer-managed' "$LIVE_PLIST"
+  check "$name: live plist points at this home" grep -F -q "$NETBOT_HOME" "$LIVE_PLIST"
+  printf 'y\n' | bash "$PKG/uninstall.sh" > "$T/${name}-un.log" 2>&1 || fail "$name uninstall exits 0" "$T/${name}-un.log"
+  check "$name: uninstall removed both plists" test ! -e "$PLIST" -a ! -e "$LIVE_PLIST"
+  check "$name: uninstall removed the home" test ! -e "$NETBOT_HOME"
+}
+plant_xml_plist() { # plant_xml_plist <marked|legacy>  (dict body on stdin)
+  local mode="$1" marker=""
+  rm -f "$PLIST"
+  if [ "$mode" = marked ]; then marker="  <!-- netbot-installer-managed -->"; fi
+  {
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'
+    printf '%s\n' '<plist version="1.0"><dict>'
+    if [ -n "$marker" ]; then printf '%s\n' "$marker"; fi
+    printf '%s\n' '  <!-- planted-args -->'
+    cat
+    printf '%s\n' '</dict></plist>'
+  } > "$PLIST"
+}
+mkdir -p "$NETBOT_LAUNCH_AGENTS"
+# Accepted: marked plist, ProgramArguments argv0 is the venv python.
+plant_args_plist marked - "$NETBOT_HOME/venv/bin/python" "$NETBOT_HOME/netbot/collect.py"
+accept_planted_plist marked-argv0-venv
+# Accepted: Program is the venv python and argv0 is the bare word python.
+plant_args_plist marked "$NETBOT_HOME/venv/bin/python" python "$NETBOT_HOME/netbot/collect.py"
+accept_planted_plist marked-program-venv
+plant_args_plist legacy "$NETBOT_HOME/venv/bin/python" python "$NETBOT_HOME/netbot/collect.py"
+accept_planted_plist legacy-program-venv
+# Refused: entity-encoded ".." as argv0, and as a later argument.
+plant_args_plist marked - "$NETBOT_HOME/&#46;&#46;/evil" "$NETBOT_HOME/netbot/collect.py"
+refuse_planted_plist marked-entity-dot-argv0
+plant_args_plist legacy - "$NETBOT_HOME/&#46;&#46;/evil" "$NETBOT_HOME/netbot/collect.py"
+refuse_planted_plist legacy-entity-dot-argv0
+plant_args_plist marked - "$NETBOT_HOME/venv/bin/python" "$NETBOT_HOME/&#46;&#46;/evil"
+refuse_planted_plist marked-entity-dot-arg
+plant_args_plist legacy - "$NETBOT_HOME/venv/bin/python" "$NETBOT_HOME/&#46;&#46;/evil"
+refuse_planted_plist legacy-entity-dot-arg
+# Refused: entity-encoded Program key added to an otherwise-valid plist.
+plant_xml_plist marked <<EOF
+  <key>Label</key><string>io.netbot.collect</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$NETBOT_HOME/venv/bin/python</string>
+    <string>$NETBOT_HOME/netbot/collect.py</string>
+  </array>
+  <key>Pro&#103;ram</key><string>/usr/bin/evil</string>
+EOF
+refuse_planted_plist marked-entity-program-key
+plant_xml_plist legacy <<EOF
+  <key>Label</key><string>io.netbot.collect</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$NETBOT_HOME/venv/bin/python</string>
+    <string>$NETBOT_HOME/netbot/collect.py</string>
+  </array>
+  <key>Pro&#103;ram</key><string>/usr/bin/evil</string>
+EOF
+refuse_planted_plist legacy-entity-program-key
+# Refused: a CDATA string. launchd would use the decoded text.
+plant_xml_plist marked <<EOF
+  <key>Label</key><string>io.netbot.collect</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$NETBOT_HOME/venv/bin/python</string>
+    <string><![CDATA[/usr/bin/evil]]></string>
+  </array>
+EOF
+refuse_planted_plist marked-cdata-string
+plant_xml_plist legacy <<EOF
+  <key>Label</key><string>io.netbot.collect</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$NETBOT_HOME/venv/bin/python</string>
+    <string><![CDATA[/usr/bin/evil]]></string>
+  </array>
+EOF
+refuse_planted_plist legacy-cdata-string
+# Refused: two ProgramArguments keys. The first array is valid. launchd uses the last argv0.
+plant_xml_plist marked <<EOF
+  <key>Label</key><string>io.netbot.collect</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$NETBOT_HOME/venv/bin/python</string>
+    <string>$NETBOT_HOME/netbot/collect.py</string>
+  </array>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/evil</string>
+  </array>
+EOF
+refuse_planted_plist marked-repeat-program-arguments
+plant_xml_plist legacy <<EOF
+  <key>Label</key><string>io.netbot.collect</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$NETBOT_HOME/venv/bin/python</string>
+    <string>$NETBOT_HOME/netbot/collect.py</string>
+  </array>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/evil</string>
+  </array>
+EOF
+refuse_planted_plist legacy-repeat-program-arguments
+
 echo "==== 17. a LaunchAgent plist that is a symlink is refused"
 # The target is a regular file this installer would accept. The LaunchAgent path
 # is a symlink to it. Install must exit non-zero without following or replacing

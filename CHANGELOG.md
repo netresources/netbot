@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased (installer-polish)
+- LaunchAgent ownership requires the program executable (`Program`, or the first `ProgramArguments` string when `Program` is absent) to be an absolute path inside the home. A bare name such as python or bash is not ours.
+- LaunchAgent ownership refuses a plist launchd would read differently: `&` in any `<key>` or `<string>` (XML entities such as `&#46;` and `&#103;`), a `<![CDATA[` section anywhere in the file, or a second `ProgramArguments` key (launchd uses the last array).
 - Live page: a read-only local server (`python3 -m netbot.live_server`) and a browser page that polls every 30 seconds. Home Wi-Fi access is off unless `[live] lan` is true; the access key is a mode-0600 file and can be rotated with `--rotate-key`. The collector rebuilds the static dashboard and writes the live JSON on every run. Charts use vendored uPlot 1.6.32 (MIT).
 
 - Installer and uninstaller wording moved to `strings/messages.sh`; shared helpers in `lib/common.sh`. Dialog text is passed to AppleScript as arguments, so wording and style can change without touching logic.
