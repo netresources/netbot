@@ -3,13 +3,16 @@
 
 Writes:
   <data_dir>/YYYY-MM.jsonl   one sample per run (local, full history)
-  <sync_dir>/latest.json     latest sample (OneDrive)
-  <sync_dir>/heartbeat       ISO timestamp of last run
-Then runs the alert evaluator, rebuilds the dashboard, and writes the live-page JSON.
+  local alerts + dashboard + live JSON every run
+  OneDrive (latest.json, heartbeat, slim YYYY-MM.jsonl, alerts/, dashboard.png)
+    only when [paths] onedrive_sync_interval_min has elapsed (default 0 = every run),
+    the calendar month rolled over, or a new ALERT is raised and
+    onedrive_sync_on_alert is true (default).
 """
 import importlib, sys, time, traceback
 from datetime import datetime
-from netbot_common import load_config, p, month_file, append_jsonl, write_json_atomic
+from netbot_common import (dish_enabled, load_config, p, month_file, append_jsonl,
+                           onedrive_sync_on_alert, push_onedrive)
 from network_checks import network_sample
 from dish_constants import DISH_CFG_SECTION, DISH_DATA_KEY, DISH_GRPC_SERVICE, DISH_LIB_MODULE, DISH_PATHS_KEY
 
@@ -66,7 +69,52 @@ def dish_sample(cfg):
     finally:
         ctx.close()
 
-def router_sample(cfg):
+
+def _ipv4_ints(addr):
+    try:
+        parts = [int(x) for x in str(addr).split(".")]
+        if len(parts) != 4 or any(p < 0 or p > 255 for p in parts):
+            return None
+        return parts
+    except (TypeError, ValueError):
+        return None
+
+
+def _same_ipv4_subnet(a, b, prefix=24):
+    """True when both look like IPv4 and share the first `prefix` bits (default /24)."""
+    aa, bb = _ipv4_ints(a), _ipv4_ints(b)
+    if not aa or not bb:
+        return False
+    mask = (0xFFFFFFFF << (32 - int(prefix))) & 0xFFFFFFFF
+    ai = (aa[0] << 24) | (aa[1] << 16) | (aa[2] << 8) | aa[3]
+    bi = (bb[0] << 24) | (bb[1] << 16) | (bb[2] << 8) | bb[3]
+    return (ai & mask) == (bi & mask)
+
+
+def router_host_on_lan(cfg, timeout=1.5):
+    """Reachability check for the configured router add-on host (no SSID).
+
+    On-LAN if the OS default gateway is that host, shares its /24, or TCP:80 answers
+    (Linksys JNAP is http://host/JNAP/). Used only to skip polling off-path — never
+    rewrites config.toml.
+    """
+    import socket
+    from network_checks import default_gateway
+    host = str((cfg.get("router") or {}).get("host") or "").strip()
+    if not host:
+        return False
+    gw = default_gateway()
+    if gw and (gw == host or _same_ipv4_subnet(gw, host)):
+        return True
+    try:
+        with socket.create_connection((host, 80), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def linksys_router_sample(cfg):
+    """Linksys JNAP vendor adapter (EA9500 and other Smart Wi-Fi)."""
     from linksys_jnap import JNAP, keychain_password, summarize
     r = cfg["router"]
     pw = None
@@ -80,36 +128,74 @@ def router_sample(cfg):
     finally:
         del pw
 
+
+def resolve_router_vendor(cfg, lan_mode):
+    """auto (default) follows lan_mode; explicit type=linksys|kit|unifi overrides."""
+    t = str((cfg.get("router") or {}).get("type") or "auto").strip().lower()
+    if t in ("linksys", "kit", "unifi"):
+        return t
+    # M2: auto picks UniFi only when [unifi].host is set AND reachable; otherwise unchanged.
+    try:
+        import unifi_router
+        if unifi_router.configured(cfg) and unifi_router.host_reachable(cfg):
+            return "unifi"
+    except Exception:  # noqa: BLE001
+        pass
+    return "linksys" if lan_mode == "linksys" else "kit"
+
+
+def router_sample(cfg, lan_mode="linksys"):
+    """Dispatch to a vendor adapter; always returns the common router sample shape."""
+    vendor = resolve_router_vendor(cfg, lan_mode)
+    if vendor == "linksys":
+        if not router_host_on_lan(cfg):
+            return {"vendor": "linksys", "reachable": False, "skipped": "off_lan",
+                    "model": None, "wan_status": None, "client_count": None, "firmware": None}
+        return linksys_router_sample(cfg)
+    if vendor == "kit":
+        from kit_router import sample as kit_sample
+        return kit_sample(cfg)
+    if vendor == "unifi":
+        from unifi_router import sample as unifi_sample
+        return unifi_sample(cfg)
+    return {"vendor": vendor, "reachable": False, "skipped": "unknown_vendor",
+            "error": f"unknown router type {vendor!r}",
+            "model": None, "wan_status": None, "client_count": None, "firmware": None}
+
+
 def main():
     cfg = load_config()
     ts = time.time()
     sample = {"ts": ts, "iso": datetime.now().astimezone().isoformat(timespec="seconds"), "host": "windows" if sys.platform == "win32" else "mac"}
-    # The dish monitor and the network checks are NetBot's core and always run; the router add-on only when enabled.
+    # Dish + network checks always run. Router add-on when enabled: vendor from
+    # [router].type (auto|linksys|kit|unifi) — auto follows lan_mode (Linksys host on-LAN).
     data_dir = p(cfg["paths"]["data_dir"])
-    for key, fn, enabled in ((DISH_DATA_KEY, dish_sample, True),
+    router_cfg_on = bool((cfg.get("router") or {}).get("enabled"))
+    on_linksys_lan = router_host_on_lan(cfg) if router_cfg_on else False
+    sample["lan_mode"] = "linksys" if on_linksys_lan else "kit"
+    for key, fn, enabled in ((DISH_DATA_KEY, dish_sample, dish_enabled(cfg)),
                              ("network", lambda c: network_sample(c, data_dir), True),
-                             ("router", router_sample, cfg["router"].get("enabled"))):
+                             ("router", lambda c: router_sample(c, sample["lan_mode"]), router_cfg_on)):
         if not enabled:
             continue
         try:
             sample[key] = fn(cfg)
         except Exception as e:  # noqa: BLE001
-            sample[key] = {"reachable": False, "error": f"{type(e).__name__}: {e}"[:300]}
+            sample[key] = {"reachable": False, "vendor": None, "error": f"{type(e).__name__}: {e}"[:300]}
     append_jsonl(month_file(data_dir, ts), sample)
-    sync = p(cfg["paths"].get("sync_dir"))
-    if sync:
-        # Never sync client MAC lists off the Mac in full; keep counts only.
-        slim = dict(sample)
-        if "router" in slim and isinstance(slim["router"], dict):
-            slim["router"] = {k: v for k, v in slim["router"].items() if k != "clients"}
-        write_json_atomic(sync / "latest.json", slim)
-        (sync / "heartbeat").write_text(sample["iso"] + "\n", encoding="utf-8")
     import evaluate_alerts
-    evaluate_alerts.run(cfg)
+    _tiles, new_alerts = evaluate_alerts.run(cfg)  # local alerts dir
     import make_dashboard
-    make_dashboard.run(cfg)
+    make_dashboard.run(cfg)  # local HTML + local PNG
     import live_data
     live_data.write(cfg)
+    # OneDrive: gated. History catch-up + latest/heartbeat/alerts/png when due.
+    force = bool(new_alerts) and onedrive_sync_on_alert(cfg)
+    try:
+        push_onedrive(cfg, sample, ts, force=force)
+    except Exception as e:  # noqa: BLE001
+        print(f"onedrive sync failed: {type(e).__name__}: {e}", file=sys.stderr)
+
 
 if __name__ == "__main__":
     try:

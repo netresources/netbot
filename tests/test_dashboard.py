@@ -369,8 +369,9 @@ class Html(unittest.TestCase):
         self.assertTrue(forced["example"])
 
     def test_header_mark_sits_left_and_narrow_layout_is_one_column(self):
-        self.assertIn('x="248.5"', self.M.HEADER_ART)
-        self.assertNotIn('x="614.5"', self.M.HEADER_ART)
+        self.assertIn('nb-cosmos', self.M.HEADER_ART)
+        self.assertIn('nb-cosmos__canvas', self.M.HEADER_ART)
+        self.assertNotIn('stop-color', self.M.HEADER_ART)
         css = (ROOT / "netbot/theme/netbot-theme.css").read_text(encoding="utf-8")
         self.assertIn("@media (max-width: 430px)", css)
         live = (ROOT / "netbot/theme/netbot-live.css").read_text(encoding="utf-8")

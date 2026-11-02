@@ -36,7 +36,11 @@ def _parse_simple_toml(text):
     return out
 
 DEFAULTS = {
-    "paths": {"data_dir": "~/NetBot/data", "sync_dir": "", DISH_PATHS_KEY: "~/NetBot/" + DISH_LIB_DIR},
+    "paths": {"data_dir": "~/NetBot/data", "sync_dir": "", DISH_PATHS_KEY: "~/NetBot/" + DISH_LIB_DIR,
+              # 0 = sync every collector run (legacy). 240 = every 4 hours.
+              "onedrive_sync_interval_min": 0,
+              # When True, a newly raised ALERT forces an immediate OneDrive sync.
+              "onedrive_sync_on_alert": True},
     DISH_CFG_SECTION: {"target": f"{DISH_HOST}:{DISH_PORT}"},
     "router": {"enabled": True, "host": "192.168.1.1", "username": "admin", "keychain_service": "netbot-linksys"},
     # network checks (core, always on). internet_targets: hosts to ping, space-separated (public anycast DNS
@@ -63,6 +67,13 @@ def load_config(path=None):
             if isinstance(v, dict):
                 cfg.setdefault(k, {}).update(v)
     return cfg
+
+def dish_enabled(cfg):
+    """[dish] enabled (default true). False skips dish polling, dish tiles, alerts, and charts."""
+    v = ((cfg or {}).get(DISH_CFG_SECTION) or {}).get("enabled", True)
+    if isinstance(v, str):
+        return v.strip().lower() not in ("false", "0", "no", "off")
+    return bool(v)
 
 def p(s):
     return Path(os.path.expanduser(s)) if s else None
@@ -92,3 +103,206 @@ def read_samples(data_dir, since_ts):
             if s.get("ts", 0) >= since_ts:
                 out.append(s)
     return sorted(out, key=lambda s: s["ts"])
+
+
+def slim_row(sample):
+    # Synced copies keep router summaries only: no per-client records, no public WAN IP.
+    out = dict(sample)
+    r = out.get("router")
+    if isinstance(r, dict):
+        out["router"] = {k: v for k, v in r.items() if k not in ("clients", "wan_ip")}
+    return out
+
+
+def _sync_month_names(ts):
+    lt = time.localtime(time.time() if ts is None else ts)
+    names = [time.strftime("%Y-%m.jsonl", lt)]
+    if lt.tm_mday <= 2:  # 1st and 2nd also refresh the previous month
+        y, m = lt.tm_year, lt.tm_mon - 1
+        if m == 0:
+            y, m = y - 1, 12
+        names.insert(0, f"{y:04d}-{m:02d}.jsonl")
+    return names
+
+
+def _write_jsonl_atomic(path, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("".join(json.dumps(r, separators=(",", ":")) + "\n" for r in rows), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def sync_history(data_dir, sync_dir, ts=None):
+    """Copy slim monthly JSONL into sync_dir. Returns the month file names written."""
+    data_dir, sync_dir = Path(data_dir), Path(sync_dir)
+    sync_dir.mkdir(parents=True, exist_ok=True)
+    state_path = sync_dir / ".history_sync_state.json"
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {}
+    except ValueError:
+        state = {}
+    if not isinstance(state, dict):
+        state = {}
+    written = []
+    for name in _sync_month_names(ts):
+        src = data_dir / name
+        if not src.exists():
+            continue
+        dst = sync_dir / name
+        st = src.stat()
+        prev = state.get(name)
+        if (dst.exists() and isinstance(prev, dict) and prev.get("size") == st.st_size
+                and prev.get("mtime_ns") == st.st_mtime_ns):
+            continue
+        rows = []
+        for line in src.read_text(encoding="utf-8").splitlines():
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(obj, dict):
+                rows.append(slim_row(obj))
+        _write_jsonl_atomic(dst, rows)
+        state[name] = {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
+        written.append(name)
+    if written:
+        write_json_atomic(state_path, state)
+    return written
+
+# ---- OneDrive batch sync (local-first; gate cloud writes) ----
+ONEDRIVE_SYNC_STATE = ".onedrive_sync_state.json"
+
+
+def local_alerts_dir(cfg):
+    """Alerts live next to data_dir (e.g. ~/NetBot/alerts), not in the synced copy."""
+    return p(cfg["paths"]["data_dir"]).parent / "alerts"
+
+
+def local_dashboard_dir(cfg):
+    return p(cfg["paths"]["data_dir"]).parent / "dashboard"
+
+
+def onedrive_sync_interval_min(cfg):
+    v = (cfg.get("paths") or {}).get("onedrive_sync_interval_min", 0)
+    try:
+        return max(0, int(v))
+    except (TypeError, ValueError):
+        return 0
+
+
+def onedrive_sync_on_alert(cfg):
+    v = (cfg.get("paths") or {}).get("onedrive_sync_on_alert", True)
+    if isinstance(v, str):
+        return v.strip().lower() not in ("false", "0", "no", "off")
+    return bool(v)
+
+
+def _onedrive_state_path(cfg):
+    return p(cfg["paths"]["data_dir"]) / ONEDRIVE_SYNC_STATE
+
+
+def read_onedrive_sync_state(cfg):
+    path = _onedrive_state_path(cfg)
+    try:
+        st = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except ValueError:
+        st = {}
+    return st if isinstance(st, dict) else {}
+
+
+def write_onedrive_sync_state(cfg, last_sync_ts, month=None):
+    month = month or time.strftime("%Y-%m", time.localtime(last_sync_ts))
+    write_json_atomic(_onedrive_state_path(cfg), {
+        "last_sync_ts": float(last_sync_ts),
+        "last_sync_month": month,
+        "last_sync_iso": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(last_sync_ts)),
+    })
+
+
+def should_sync_onedrive(cfg, now=None, force=False):
+    """True when OneDrive should be written this run.
+
+    Reasons: no sync_dir -> False; interval 0 -> every run; force (e.g. new ALERT);
+    never synced; interval elapsed; calendar month rolled over since last sync.
+    """
+    if not p((cfg.get("paths") or {}).get("sync_dir")):
+        return False
+    if force:
+        return True
+    interval = onedrive_sync_interval_min(cfg)
+    if interval <= 0:
+        return True
+    now = time.time() if now is None else float(now)
+    st = read_onedrive_sync_state(cfg)
+    last = st.get("last_sync_ts")
+    if not isinstance(last, (int, float)):
+        return True
+    cur_month = time.strftime("%Y-%m", time.localtime(now))
+    if st.get("last_sync_month") != cur_month:
+        return True
+    return (now - float(last)) >= interval * 60
+
+
+def write_text_atomic(path, text):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def copy_file_atomic(src, dst):
+    src, dst = Path(src), Path(dst)
+    if not src.is_file():
+        return False
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_suffix(dst.suffix + ".tmp")
+    tmp.write_bytes(src.read_bytes())
+    os.replace(tmp, dst)
+    return True
+
+
+def sync_alerts_to_onedrive(cfg, sync_dir):
+    """Copy local alerts/active.json and ALERT-*.json into sync_dir/alerts (atomic)."""
+    local = local_alerts_dir(cfg)
+    remote = Path(sync_dir) / "alerts"
+    remote.mkdir(parents=True, exist_ok=True)
+    copied = []
+    if not local.is_dir():
+        return copied
+    for name in ["active.json", *sorted(fp.name for fp in local.glob("ALERT-*.json"))]:
+        src = local / name
+        if src.is_file() and copy_file_atomic(src, remote / name):
+            copied.append(name)
+    return copied
+
+
+def push_onedrive(cfg, sample, ts=None, force=False):
+    """Write all OneDrive artifacts if the gate allows. Returns True if a sync ran.
+
+    Catches up history (full slim month rewrite), latest.json, heartbeat, alerts,
+    dashboard.png, and updates the local .onedrive_sync_state.json.
+    """
+    import sys
+    sync = p((cfg.get("paths") or {}).get("sync_dir"))
+    if not sync:
+        return False
+    now = float(ts if ts is not None else time.time())
+    if not should_sync_onedrive(cfg, now=now, force=force):
+        return False
+    data_dir = p(cfg["paths"]["data_dir"])
+    sync.mkdir(parents=True, exist_ok=True)
+    if cfg["paths"].get("sync_history", True):
+        try:
+            sync_history(data_dir, sync, now)
+        except Exception as e:  # noqa: BLE001
+            print(f"history sync failed: {type(e).__name__}: {e}", file=sys.stderr)
+    write_json_atomic(sync / "latest.json", slim_row(sample))
+    iso = sample.get("iso") or time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(now))
+    write_text_atomic(sync / "heartbeat", iso + "\n")
+    sync_alerts_to_onedrive(cfg, sync)
+    png = local_dashboard_dir(cfg) / "dashboard.png"
+    if png.is_file():
+        copy_file_atomic(png, sync / "dashboard.png")
+    write_onedrive_sync_state(cfg, now)
+    return True

@@ -58,3 +58,4 @@ SRC_DISH, SRC_DISH_CALC, SRC_CALC, SRC_ROUTER = "DISH", "DISH · CALC", "CALC", 
 LEGEND = ((SRC_DISH, "reported by the dish"), (SRC_DISH_CALC, "calculated by NetBot from dish data"),
           (SRC_CALC, "measured and calculated by NetBot on this computer"))
 CHIP_DISH, CHIP_NETWORK, CHIP_ROUTER = "Dish · on", "Network checks · on", "Router add-on · {state}"
+CHIP_DISH_OFF = "Dish · off"

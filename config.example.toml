@@ -4,16 +4,39 @@ data_dir = "~/NetBot/data"
 # Optional cloud folder for a synced copy (OneDrive, iCloud Drive, Dropbox, Google Drive). Empty = local only.
 sync_dir = ""
 dish_lib = "~/NetBot/dish-lib"   # the dish library setup downloads (pinned, sha256-checked)
+# How often to copy latest.json, heartbeat, history, alerts, and dashboard.png into sync_dir.
+# Local sampling still runs every 5 minutes. 0 = every collector run (legacy). 240 = every 4 hours.
+onedrive_sync_interval_min = 240
+# When a NEW red ALERT is raised, copy to sync_dir immediately (default true).
+onedrive_sync_on_alert = true
+# When false, skip copying the monthly history jsonl into sync_dir (latest/heartbeat/alerts/png still follow the interval).
+sync_history = true
 
 [dish]
+enabled = true                 # false hides dish cards and skips dish checks (e.g. no dish on this LAN)
 target = "192.168.100.1:9200"
 
 [router]
 enabled = false
-host = ""
+# auto (default) = Linksys when its host is on-LAN, else kit Wi-Fi router :9000;
+# when [unifi].host answers as UniFi OS, auto selects UniFi.
+# Or force: linksys | kit | unifi
+type = "auto"
+host = ""                      # Linksys JNAP host when type=auto|linksys
 username = "admin"
 use_password = false
 keychain_service = "netbot-linksys"   # password, if any, lives ONLY in macOS Keychain
+# kit_host = "192.168.1.1"     # optional kit Wi-Fi router override (gRPC :9000)
+
+[unifi]
+# Optional. Read-only local API. Key lives in Keychain (netbot-unifi / netbot) or env (api_key_env).
+# host = "192.168.1.1"
+# port = 443
+# path_prefix = "/proxy/network"   # self-hosted Network app: port = 8443, path_prefix = ""
+# site = "default"
+# verify_tls = false
+# api_key_env = "NETBOT_UNIFI_API_KEY"
+# keychain_service = "netbot-unifi"
 
 [alerts]
 quiet_start = 22

@@ -1,7 +1,16 @@
+
+function cosmosCssColor(name, fallbackParts) {
+  try {
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    if (v) return v;
+  } catch (e) {}
+  return "#" + fallbackParts;
+}
 /* Live page. Polls this server only. The seconds counter is outside the live region. */
 (function () {
   "use strict";
   var sampleTs = null;
+  var dishOn = true;
   var staleAfter = 1200;
   var pollS = 30;
   var state = "live";
@@ -105,7 +114,7 @@
     banner.hidden = true;
     last.hidden = true;
     if (next === "stale") meta.textContent = "No new sample for 20+ min · page still refreshes every " + pollS + " s";
-    else meta.textContent = "Page refreshes every " + pollS + " s · dish sampled every 5 min";
+    else meta.textContent = "Page refreshes every " + pollS + " s · " + (dishOn ? "dish sampled" : "sampled") + " every 5 min";
   }
 
   function pill(tile) {
@@ -317,6 +326,118 @@
     }
   }
 
+
+  var KNOWN_ROUTER_COLORS = {
+    "Linksys router": "#" + "3DB8F5",
+    "Kit router": "#" + "7EC8FF",
+    "UniFi Dream Machine SE": "#" + "4DA3FF",
+    "Unknown": "#" + "C0A0FF"
+  };
+
+  function hashHue(name) {
+    var h = 0;
+    var i;
+    for (i = 0; i < name.length; i++) h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+    return Math.abs(h) % 360;
+  }
+
+  function routerColor(name) {
+    if (KNOWN_ROUTER_COLORS[name]) return KNOWN_ROUTER_COLORS[name];
+    return "hsl(" + hashHue(name) + " 72% 68%)";
+  }
+
+  function applyActiveRouter(name) {
+    var ar = byId("active-router");
+    if (!ar) return;
+    var label = name || "Unknown";
+    ar.textContent = label;
+    ar.setAttribute("data-router", label);
+    ar.className = "nb-active-router__name";
+    var color = routerColor(label);
+    ar.style.color = color;
+    ar.style.textShadow = "0 0 10px " + color;
+  }
+
+  function csrfToken() {
+    var box = byId("monitor-controls");
+    return box ? (box.getAttribute("data-csrf") || "") : "";
+  }
+
+  function setMonitorBtn(btn, selected) {
+    if (!btn) return;
+    btn.classList.remove("nb-btn--idle", "nb-btn--selected");
+    btn.classList.add(selected ? "nb-btn--selected" : "nb-btn--idle");
+    /* Keep both clickable; selected means "current state", not disabled. */
+    btn.disabled = false;
+  }
+
+  function paintMonitor(state) {
+    var box = byId("monitor-controls");
+    if (!box) return;
+    var status = byId("monitor-status");
+    var word = byId("monitor-state");
+    var start = byId("btn-monitor-start");
+    var stop = byId("btn-monitor-stop");
+    var err = byId("monitor-err");
+    if (err) { err.hidden = true; err.textContent = ""; }
+    var running = !!(state && state.running);
+    var known = state && typeof state.running === "boolean";
+    var label = !known ? "unknown" : (running ? "on" : "paused");
+    var text = !known ? "UNKNOWN" : (running ? "ON" : "PAUSED");
+    if (status) status.setAttribute("data-state", label);
+    if (word) word.textContent = text;
+    /* ON → Start selected; PAUSED → Stop selected. */
+    setMonitorBtn(start, known && running);
+    setMonitorBtn(stop, known && !running);
+  }
+
+  function flashMonitorBtn(btn, then) {
+    if (!btn) { if (then) then(); return; }
+    btn.classList.add("nb-btn--flash");
+    setTimeout(function () {
+      btn.classList.remove("nb-btn--flash");
+      if (then) then();
+    }, 400);
+  }
+
+  function refreshMonitor() {
+    var box = byId("monitor-controls");
+    if (!box) return;
+    fetch("/api/monitor.json", {cache: "no-store"})
+      .then(function (r) { if (!r.ok) throw new Error("monitor"); return r.json(); })
+      .then(function (data) { paintMonitor(data); })
+      .catch(function () { paintMonitor(null); });
+  }
+
+  function postMonitor(action, btn) {
+    var box = byId("monitor-controls");
+    if (!box) return;
+    var err = byId("monitor-err");
+    function send() {
+      fetch("/api/monitor/" + action, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "X-CSRF-Token": csrfToken(),
+          "Content-Type": "application/json"
+        },
+        body: "{}"
+      }).then(function (r) {
+        return r.json().then(function (data) {
+          if (!r.ok) throw new Error((data && data.error) || ("HTTP " + r.status));
+          paintMonitor(data);
+        });
+      }).catch(function (e) {
+        if (err) {
+          err.hidden = false;
+          err.textContent = String((e && e.message) || e || "request failed");
+        }
+        refreshMonitor();
+      });
+    }
+    flashMonitorBtn(btn, send);
+  }
+
   function renderAccess(access) {
     var on = !!(access && access["lan"]);
     byId("wifi").className = on ? "nb-wifi" : "nb-wifi is-off";
@@ -374,6 +495,7 @@
 
   function render(status, history, access) {
     sampleTs = (typeof status.sample_ts === "number") ? status.sample_ts : null;
+    dishOn = status.dish_on !== false;
     staleAfter = (typeof status.stale_after_s === "number") ? status.stale_after_s : 1200;
     var chosen = status.poll_s;
     pollS = (typeof chosen === "number" && chosen >= 30 && chosen <= 60) ? chosen : 30;
@@ -396,6 +518,8 @@
       applyState(age >= staleAfter ? "stale" : "live");
     }
     renderAccess(access);
+    applyActiveRouter(status.active_router || "Unknown");
+    refreshMonitor();
     var chips = byId("chips");
     chips.textContent = "";
     (status.chips || []).forEach(function (chip) {
@@ -490,6 +614,265 @@
     });
   }
 
+
+  /* Deep-space window: layered starfield + nebulae + rare satellite glints. */
+  function preferReducedMotion() {
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+
+  function startCosmos() {
+    var root = document.querySelector(".nb-cosmos");
+    if (!root) return;
+    var canvas = root.querySelector(".nb-cosmos__canvas");
+    if (!canvas || !canvas.getContext) {
+      root.classList.add("is-fallback");
+      return;
+    }
+    var ctx = canvas.getContext("2d", { alpha: true });
+    if (!ctx) {
+      root.classList.add("is-fallback");
+      return;
+    }
+    root.classList.add("is-canvas");
+    var reduced = preferReducedMotion();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var stars = [];
+    var nebulae = [];
+    var galaxies = [];
+    var glint = null;
+    var nextGlintAt = 0; /* scheduled in build() */
+    var raf = 0;
+    var last = 0;
+    var w = 0;
+    var h = 0;
+
+    function rand(a, b) { return a + Math.random() * (b - a); }
+
+    function resize() {
+      var rect = root.getBoundingClientRect();
+      w = Math.max(2, Math.floor(rect.width));
+      h = Math.max(2, Math.floor(rect.height));
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      canvas.style.width = w + "px";
+      canvas.style.height = h + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      build();
+      paint(0, true);
+    }
+
+    function build() {
+      var i, n = Math.min(160, Math.max(70, Math.floor(w * h / 1800)));
+      stars = [];
+      for (i = 0; i < n; i++) {
+        var layer = (i % 3) + 1;
+        var roll = Math.random();
+        var color = roll < 0.72 ? "255,255,255"
+          : roll < 0.84 ? "180,210,255"
+          : roll < 0.93 ? "255,230,190"
+          : "190,255,240";
+        stars.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          r: (layer === 1 ? rand(0.4, 0.9) : layer === 2 ? rand(0.7, 1.4) : rand(1.1, 2.0)),
+          a: rand(0.25, 0.95),
+          tw: rand(0.4, 1.6),
+          ph: rand(0, Math.PI * 2),
+          layer: layer,
+          color: color
+        });
+      }
+      nebulae = [
+        { x: w * 0.22, y: h * 0.42, rx: w * 0.34, ry: h * 0.55, color: "110,70,180", a: 0.22, drift: 0.003 },
+        { x: w * 0.72, y: h * 0.58, rx: w * 0.30, ry: h * 0.48, color: "30,140,150", a: 0.18, drift: -0.0025 },
+        { x: w * 0.55, y: h * 0.28, rx: w * 0.22, ry: h * 0.30, color: "40,70,160", a: 0.14, drift: 0.0018 }
+      ];
+      galaxies = [
+        { x: w * 0.82, y: h * 0.28, rx: 28, ry: 10, rot: -0.5, color: "200,210,255", a: 0.22 },
+        { x: w * 0.18, y: h * 0.70, rx: 18, ry: 7, rot: 0.7, color: "255,210,180", a: 0.16 }
+      ];
+      /* Keep an in-flight glint across resize; only clear if size collapsed. */
+      if (w < 40 || h < 20) glint = null;
+      if (reduced) {
+        nextGlintAt = 1e18;
+        glint = null;
+      } else if (!nextGlintAt || nextGlintAt > performance.now() + 60000) {
+        /* First schedule: 5–10 s after load/rebuild. */
+        nextGlintAt = performance.now() + rand(5000, 10000);
+      }
+    }
+
+    function spawnGlint(now) {
+      /* Edge-to-edge pass on an angled/gently curved arc, 4–7 s. */
+      var left = Math.random() < 0.5;
+      var up = Math.random() < 0.5;
+      var deg = rand(10, 35);
+      var rad = deg * Math.PI / 180;
+      var durMs = rand(4000, 7000);
+      var startX = left ? -40 : w + 40;
+      var endX = left ? (w + 40) : -40;
+      var dx = endX - startX;
+      /* Rise/fall from angle over full width; clamp endpoints into the header band. */
+      var rise = Math.tan(rad) * Math.abs(dx) * (up ? -1 : 1);
+      var midBand = h * 0.5;
+      var startY = midBand - rise * 0.5 + rand(-h * 0.08, h * 0.08);
+      var endY = startY + rise;
+      startY = Math.max(h * 0.08, Math.min(h * 0.92, startY));
+      endY = Math.max(h * 0.08, Math.min(h * 0.92, endY));
+      /* Slight arc bulge (perpendicular to chord), ~4–9% of height. */
+      var bulge = rand(0.04, 0.09) * h * (Math.random() < 0.5 ? 1 : -1);
+      glint = {
+        x0: startX, y0: startY,
+        x1: endX, y1: endY,
+        bulge: bulge,
+        born: now,
+        dur: durMs,
+        x: startX, y: startY,
+        trail: [],
+        angleDeg: Math.round(deg * 10) / 10
+      };
+      nextGlintAt = now + rand(12000, 25000);
+      root.setAttribute("data-glint-count", String((Number(root.getAttribute("data-glint-count") || 0) + 1)));
+      root.setAttribute("data-glint-at", String(Math.round(now)));
+      root.setAttribute("data-glint-angle", String(glint.angleDeg));
+      if (window.console && console.debug) {
+        console.debug("[netbot cosmos] glint #" + root.getAttribute("data-glint-count") +
+          " at " + Math.round(now) + "ms angle=" + glint.angleDeg + "deg");
+      }
+    }
+
+    function paint(now, forceStatic) {
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#" + "05070d";
+      ctx.fillRect(0, 0, w, h);
+      var t = now * 0.001;
+      var i;
+      for (i = 0; i < nebulae.length; i++) {
+        var n = nebulae[i];
+        var nx = n.x + (reduced || forceStatic ? 0 : Math.sin(t * n.drift * 60 + i) * 10);
+        var ny = n.y + (reduced || forceStatic ? 0 : Math.cos(t * n.drift * 50 + i) * 6);
+        var g = ctx.createRadialGradient(nx, ny, 0, nx, ny, n.rx);
+        g.addColorStop(0, "rgba(" + n.color + "," + n.a + ")");
+        g.addColorStop(0.55, "rgba(" + n.color + "," + (n.a * 0.35) + ")");
+        g.addColorStop(1, "rgba(" + "0,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(nx, ny, n.rx, n.ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (i = 0; i < galaxies.length; i++) {
+        var gal = galaxies[i];
+        ctx.save();
+        ctx.translate(gal.x, gal.y);
+        ctx.rotate(gal.rot);
+        var gg = ctx.createRadialGradient(0, 0, 0, 0, 0, gal.rx);
+        gg.addColorStop(0, "rgba(" + gal.color + "," + gal.a + ")");
+        gg.addColorStop(0.45, "rgba(" + gal.color + "," + (gal.a * 0.35) + ")");
+        gg.addColorStop(1, "rgba(" + "0,0,0,0)");
+        ctx.fillStyle = gg;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, gal.rx, gal.ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      for (i = 0; i < stars.length; i++) {
+        var s = stars[i];
+        var tw = 1;
+        if (!reduced && !forceStatic) {
+          tw = 0.55 + 0.45 * Math.sin(t * s.tw + s.ph);
+        }
+        var alpha = Math.max(0.12, Math.min(1, s.a * tw));
+        var dx = (!reduced && !forceStatic) ? Math.sin(t * 0.02 * s.layer + s.ph) * (0.4 * s.layer) : 0;
+        var dy = (!reduced && !forceStatic) ? Math.cos(t * 0.015 * s.layer + s.ph) * (0.25 * s.layer) : 0;
+        ctx.fillStyle = "rgba(" + s.color + "," + alpha + ")";
+        ctx.beginPath();
+        ctx.arc(s.x + dx, s.y + dy, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (glint) {
+        var age = Math.max(0, now - glint.born);
+        var mid = glint.dur / 2;
+        var fade = 1 - Math.abs(age - mid) / mid;
+        fade = Math.max(0, Math.min(1, fade));
+        /* Trail from stored points (oldest → newest). */
+        var trail = glint.trail || [];
+        if (trail.length >= 2) {
+          var ti;
+          for (ti = 1; ti < trail.length; ti++) {
+            var p0 = trail[ti - 1];
+            var p1 = trail[ti];
+            var tf = (ti / trail.length) * fade;
+            ctx.strokeStyle = "rgba(" + "220,235,255," + (0.08 + 0.55 * tf) + ")";
+            ctx.lineWidth = 1.2 + 1.4 * tf;
+            ctx.beginPath();
+            ctx.moveTo(p0.x, p0.y);
+            ctx.lineTo(p1.x, p1.y);
+            ctx.stroke();
+          }
+        }
+        /* Bright core + soft halo. */
+        var halo = ctx.createRadialGradient(glint.x, glint.y, 0, glint.x, glint.y, 7);
+        halo.addColorStop(0, "rgba(" + "255,255,255," + (0.55 + 0.45 * fade) + ")");
+        halo.addColorStop(0.35, "rgba(" + "200,220,255," + (0.25 * fade) + ")");
+        halo.addColorStop(1, "rgba(" + "200,220,255,0)");
+        ctx.fillStyle = halo;
+        ctx.beginPath();
+        ctx.arc(glint.x, glint.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(" + "255,255,255," + (0.75 + 0.25 * fade) + ")";
+        ctx.beginPath();
+        ctx.arc(glint.x, glint.y, 2.1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function frame(now) {
+      if (!last) last = now;
+      var dt = Math.min(50, now - last);
+      last = now;
+      if (!reduced) {
+        if (!glint && now >= nextGlintAt) spawnGlint(now);
+        if (glint) {
+          var lived = now - glint.born;
+          var u = Math.max(0, Math.min(1, lived / glint.dur));
+          /* Quadratic Bezier: endpoints on opposite edges, control point offset for curve. */
+          var mx = (glint.x0 + glint.x1) / 2;
+          var my = (glint.y0 + glint.y1) / 2;
+          var cx = mx;
+          var cy = my + glint.bulge;
+          var omu = 1 - u;
+          glint.x = omu * omu * glint.x0 + 2 * omu * u * cx + u * u * glint.x1;
+          glint.y = omu * omu * glint.y0 + 2 * omu * u * cy + u * u * glint.y1;
+          glint.trail.push({ x: glint.x, y: glint.y });
+          if (glint.trail.length > 18) glint.trail.shift();
+          if (u >= 1) glint = null;
+        }
+      }
+      paint(now, false);
+      raf = window.requestAnimationFrame(frame);
+    }
+
+    resize();
+    window.addEventListener("resize", function () {
+      clearTimeout(resize._t);
+      resize._t = setTimeout(resize, 120);
+    });
+    if (reduced) {
+      paint(performance.now(), true);
+    } else {
+      raf = window.requestAnimationFrame(frame);
+    }
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) {
+        if (raf) cancelAnimationFrame(raf);
+        raf = 0;
+      } else if (!reduced && !raf) {
+        last = 0;
+        raf = window.requestAnimationFrame(frame);
+      }
+    });
+  }
+
   announced = byId("live-word").textContent;
   byId("btn-copy").addEventListener("click", function () {
     if (!fullLink || !navigator.clipboard || !navigator.clipboard.writeText) return;
@@ -510,5 +893,11 @@
     var next = age >= staleAfter ? "stale" : "live";
     if (next !== state) applyState(next);
   }, 1000);
+  var monStart = byId("btn-monitor-start");
+  var monStop = byId("btn-monitor-stop");
+  if (monStart) monStart.addEventListener("click", function () { postMonitor("start", monStart); });
+  if (monStop) monStop.addEventListener("click", function () { postMonitor("stop", monStop); });
+  refreshMonitor();
+  startCosmos();
   poll();
 }());

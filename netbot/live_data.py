@@ -15,7 +15,7 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-from netbot_common import load_config, p, read_samples, write_json_atomic
+from netbot_common import dish_enabled, load_config, p, read_samples, write_json_atomic
 from dish_constants import DISH_DATA_KEY
 from migrate_legacy import LEGACY_KEY
 from evaluate_alerts import tiles, CRIT_DISH_ALERTS, WARN_DISH_ALERTS
@@ -72,15 +72,65 @@ def _tile(name, level, text, value, wide=False):
     }
 
 
+ACTIVE_ROUTER_NAMES = {"linksys": "Linksys router", "kit": "Kit router"}
+
+
+UNIFI_MODEL_NAMES = {
+    "UDMPROSE": "UniFi Dream Machine SE",
+    "UDMPRO": "UniFi Dream Machine Pro",
+    "UDMPROMAX": "UniFi Dream Machine Pro Max",
+    "UDM": "UniFi Dream Machine",
+    "UDR": "UniFi Dream Router",
+    "UDR7": "UniFi Dream Router 7",
+    "UCG": "UniFi Cloud Gateway",
+    "UCGULTRA": "UniFi Cloud Gateway Ultra",
+    "UCGMAX": "UniFi Cloud Gateway Max",
+    "UXG": "UniFi Next-Gen Gateway",
+    "UXGPRO": "UniFi Next-Gen Gateway Pro",
+    "USG": "UniFi Security Gateway",
+}
+
+
+def unifi_label(model):
+    """'UniFi Dream Machine SE' for UDMPROSE; other models 'UniFi <model>'; no model -> 'UniFi router'."""
+    m = str(model or "").strip()
+    if not m:
+        return "UniFi router"
+    key = m.upper().replace("-", "").replace(" ", "")
+    if key in UNIFI_MODEL_NAMES:
+        return UNIFI_MODEL_NAMES[key]
+    return m if m.lower().startswith("unifi") else "UniFi " + m
+
+
+def active_router(last, now):
+    """Header 'Active router' label from the latest sample's router vendor / lan_mode.
+    Unknown when data is missing, stale, or the vendor isn't one we name."""
+    if not isinstance(last, dict) or not last:
+        return "Unknown"
+    ts = last.get("ts")
+    if not isinstance(ts, (int, float)) or now - ts > STALE_AFTER_S:
+        return "Unknown"
+    rt = last.get("router")
+    if isinstance(rt, dict):
+        v = str(rt.get("vendor") or "").lower()
+        if v == "unifi":
+            # Router vendor wins over the network-path fallback for UniFi.
+            return unifi_label(rt.get("model"))
+        if not rt.get("skipped") and v in ACTIVE_ROUTER_NAMES:
+            return ACTIVE_ROUTER_NAMES[v]
+    return ACTIVE_ROUTER_NAMES.get(str(last.get("lan_mode") or "").lower(), "Unknown")
+
+
 def build_status(samples, now, cfg):
     samples = _with_dish(samples)
-    info = tiles(samples, now)
+    dish_on = dish_enabled(cfg)
+    info = tiles(samples, now, dish=dish_on)
     vals = readout_values(samples, now)
     last = samples[-1] if samples else {}
     router_on = isinstance(last.get("router"), dict)
     active = set((last.get(DISH_DATA_KEY) or {}).get("alerts") or [])
     panels = []
-    for name in DISH_TILES + NET_TILES:
+    for name in (DISH_TILES if dish_on else ()) + NET_TILES:
         if name not in info or name not in vals:
             continue
         tile = _tile(name, info[name][0], info[name][1], vals[name], wide=name == T.TILE_DISH_ALERTS)
@@ -110,15 +160,17 @@ def build_status(samples, now, cfg):
         "poll_s": POLL_S,
         "lan_access": bool((cfg.get("live") or {}).get("lan")),
         "router_on": router_on,
+        "active_router": active_router(last, now),
+        "dish_on": dish_on,
         "example": any(bool(s.get("example")) for s in samples) or bool((cfg.get("live") or {}).get("example")),
         "example_text": T.EXAMPLE_BANNER,
         "tiles": panels,
         "sections": [
             {"label": T.SECTION_DISH, "names": [n for n in DISH_TILES if n in info], "collector": True},
-            {"label": T.SECTION_NETWORK, "names": [n for n in NET_TILES if n in info], "collector": False},
-        ],
+            {"label": T.SECTION_NETWORK, "names": [n for n in NET_TILES if n in info], "collector": not dish_on},
+        ][(0 if dish_on else 1):],
         "chips": [
-            {"text": T.CHIP_DISH, "on": True},
+            {"text": T.CHIP_DISH if dish_on else T.CHIP_DISH_OFF, "on": dish_on},
             {"text": T.CHIP_NETWORK, "on": True},
             {"text": T.CHIP_ROUTER.format(state="on" if router_on else "off"), "on": router_on},
         ],
@@ -128,12 +180,12 @@ def build_status(samples, now, cfg):
     }
 
 
-def build_history(samples, now):
+def build_history(samples, now, dish=True):
     samples = _with_dish(samples)
     last = samples[-1] if samples else {}
     router_on = isinstance(last.get("router"), dict)
     sections = []
-    for label, src, items in charts(samples, now, router_on):
+    for label, src, items in charts(samples, now, router_on, dish=dish):
         sections.append({
             "label": label,
             "source": src,
@@ -152,5 +204,5 @@ def write(cfg=None, now=None):
     data_dir, status_path, history_path = live_paths(cfg)
     samples = read_samples(data_dir, now - WEEK)
     write_json_atomic(status_path, build_status(samples, now, cfg))
-    write_json_atomic(history_path, build_history(samples, now))
+    write_json_atomic(history_path, build_history(samples, now, dish=dish_enabled(cfg)))
     return status_path, history_path

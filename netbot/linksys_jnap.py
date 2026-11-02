@@ -136,7 +136,7 @@ def summarize(j, today=None):
 
     today is a datetime.date for the end-of-support check. Tests pass it in; the default is the current date.
     """
-    out, errors = {}, {}
+    out, errors = {"vendor": "linksys"}, {}
     def safe(name):
         try:
             return j.call(name)

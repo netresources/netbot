@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased (2026-11-02 staging)
+- Live page: Start Monitoring / Stop Monitoring controls (localhost only; CSRF + loopback required). Status shows whether the collector LaunchAgent is on or paused.
+- Live page: Active router name pulses slowly with a distinct color per vendor (Linksys / kit / UniFi / Unknown).
+- Live page: deep-space header (stars, nebulae, galaxies, occasional satellite glint on a curved full-width pass). Phone-access QR folds into a closed details block on localhost.
+- Collector: optional `[paths] onedrive_sync_interval_min` (default documented as 240 = every 4 hours in config.example; 0 = every run). Local sampling stays every 5 minutes. New red ALERTs can force an immediate sync (`onedrive_sync_on_alert`).
+- History sync to `sync_dir` (`sync_history`, slim rows without clients / WAN IP).
+- Router add-on: multi-vendor `type = auto|linksys|kit|unifi`, kit Wi-Fi router gRPC adapter, UniFi read-only adapter with UniFi OS location check before any API key is sent.
+- `[dish] enabled` switch (default true) to hide dish cards and skip dish checks.
+- Tests: monitor controls, active router label, UniFi router/location, dish switch, OneDrive batch sync.
+
 ## Unreleased (installer-polish)
 - LaunchAgent ownership requires the program executable (`Program`, or the first `ProgramArguments` string when `Program` is absent) to be an absolute path inside the home. A bare name such as python or bash is not ours.
 - LaunchAgent ownership refuses a plist launchd would read differently: `&` in any `<key>` or `<string>` (XML entities such as `&#46;` and `&#103;`), a `<![CDATA[` section anywhere in the file, or a second `ProgramArguments` key (launchd uses the last array).

@@ -201,6 +201,7 @@
   .nb-wrap { padding: var(--nb-s3) var(--nb-s3) var(--nb-s6); }
   .nb-header { flex-direction: column; align-items: flex-start; padding: var(--nb-s4); }
   .nb-header__art { width: 100%; opacity: .45; }
+  .nb-header__art.nb-cosmos { opacity: 1; width: 100%; }
   .nb-clock { text-align: left; }
   .nb-title { font-size: 22px; }
   .nb-readouts, .nb-readouts--5, .nb-readouts--3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -226,3 +227,90 @@
   .nb-watch li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .nb-watch em { flex: none; }
 }
+
+/* ---------- Active router pulse + per-router colors (2026-11-02 v2) ---------- */
+.nb-active-router { margin: var(--nb-s2) 0 0; font: 600 1.15rem/1.3 var(--nb-font-mono); color: var(--nb-text-2); }
+.nb-active-router b.nb-active-router__name,
+.nb-active-router__name {
+  display: inline-block;
+  font-weight: 700;
+  color: var(--nb-router);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--nb-router) 45%, transparent);
+  animation: nb-router-pulse 2.4s ease-in-out infinite;
+}
+.nb-active-router__name[data-router="Linksys router"] { --nb-router: var(--nb-router-linksys); }
+.nb-active-router__name[data-router="Kit router"] { --nb-router: var(--nb-router-kit); }
+.nb-active-router__name[data-router="UniFi Dream Machine SE"] { --nb-router: var(--nb-router-unifi); }
+.nb-active-router__name[data-router="Unknown"] { --nb-router: var(--nb-router-unknown); }
+@keyframes nb-router-pulse {
+  0%, 100% { opacity: 1; filter: brightness(1); }
+  50% { opacity: .62; filter: brightness(1.25); }
+}
+/* Reduce Motion: keep a gentle color/glow shift instead of opacity pulse */
+@media (prefers-reduced-motion: reduce) {
+  .nb-active-router b.nb-active-router__name,
+  .nb-active-router__name {
+    animation: nb-router-glow 3.2s ease-in-out infinite;
+    opacity: 1;
+  }
+  @keyframes nb-router-glow {
+    0%, 100% { filter: brightness(1); text-shadow: 0 0 6px color-mix(in srgb, var(--nb-router) 30%, transparent); }
+    50% { filter: brightness(1.35); text-shadow: 0 0 16px color-mix(in srgb, var(--nb-router) 70%, transparent); }
+  }
+}
+
+
+/* ---------- Deep-space window header (2026-11-02 v2) ---------- */
+.nb-header {
+  background:
+    linear-gradient(180deg, rgba(5,7,13,.55), rgba(8,10,18,.92)),
+    #05070d;
+}
+.nb-header__art.nb-cosmos {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  pointer-events: none; overflow: hidden; opacity: 1;
+  border-radius: inherit;
+}
+.nb-cosmos__canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  display: block;
+}
+.nb-cosmos__fallback {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  display: block;
+}
+.nb-cosmos__canvas + .nb-cosmos__fallback { display: none; } /* hide SVG once canvas is present in DOM; JS may hide canvas on error */
+.nb-cosmos.is-canvas .nb-cosmos__fallback { display: none; }
+.nb-cosmos.is-fallback .nb-cosmos__canvas { display: none; }
+.nb-cosmos.is-fallback .nb-cosmos__fallback { display: block; }
+.nb-cosmos__vignette {
+  position: absolute; inset: 0;
+  box-shadow:
+    inset 0 0 48px 18px rgba(0,0,0,.72),
+    inset 0 0 0 1px rgba(255,255,255,.04);
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(0,0,0,.35), transparent 18%, transparent 82%, rgba(0,0,0,.35)),
+    linear-gradient(180deg, rgba(0,0,0,.2), transparent 30%, transparent 70%, rgba(0,0,0,.45));
+}
+/* Keep title readable over the cosmos */
+.nb-header > :not(.nb-header__art) {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 2px rgba(0,0,0,.85);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nb-cosmos { opacity: .9; }
+}
+
+
+/* Cosmos header fallback (static PNG/HTML path; live page paints on canvas). */
+.nb-cosmos-bg { fill: var(--nb-cosmos-bg); }
+.nb-cosmos-neb-a { fill: url(#nb-neb-a); }
+.nb-cosmos-neb-b { fill: url(#nb-neb-b); }
+.nb-cosmos-stop-a0 { stop-color: var(--nb-cosmos-neb-a); }
+.nb-cosmos-stop-a1 { stop-color: var(--nb-cosmos-neb-a2); }
+.nb-cosmos-stop-a2 { stop-color: var(--nb-cosmos-bg); }
+.nb-cosmos-stop-b0 { stop-color: var(--nb-cosmos-neb-b); }
+.nb-cosmos-stop-b1 { stop-color: var(--nb-cosmos-neb-b2); }
+.nb-cosmos-stop-b2 { stop-color: var(--nb-cosmos-bg); }

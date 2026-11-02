@@ -70,5 +70,33 @@
   /* Shape */
   --nb-radius:    2px;      /* nearly square corners */
   --nb-border:    1px solid var(--nb-hairline);
+
+  /* Deep-space header (live page + static dashboard fallback). */
+  --nb-cosmos-bg:       #05070D;
+  --nb-cosmos-neb-a:    #6B3FA0;
+  --nb-cosmos-neb-a2:   #2A4A8A;
+  --nb-cosmos-neb-b:    #1A7A8C;
+  --nb-cosmos-neb-b2:   #243A6E;
+  --nb-cosmos-star:     #C8DCFF;
+  --nb-cosmos-glint:    #FFFFFF;
+
+  /* Active-router name colors (live header). */
+  --nb-router-linksys:  #3DB8F5;
+  --nb-router-kit:      #7EC8FF;
+  --nb-router-unifi:    #4DA3FF;
+  --nb-router-unknown:  #C0A0FF;
+  --nb-router:          var(--nb-router-kit);
+
+  /* Monitor Start/Stop button tints (live page only). */
+  --nb-mon-idle-bg:     #06100A;
+  --nb-mon-idle-bg2:    #0D1512;
+  --nb-mon-idle-bd:     #2A3A32;
+  --nb-mon-idle-fg:     #6A7A72;
+  --nb-mon-on-bg:       #14201A;
+  --nb-mon-on-bd:       #3A4E44;
+  --nb-mon-on-fg:       #9AAFA4;
+  --nb-mon-flash-bg:    #1A1400;
+  --nb-mon-flash:       #F5D76E;
+  --nb-mon-accent-soft: #A6FFBC;
   --nb-light:     10px;     /* status light diameter */
 }

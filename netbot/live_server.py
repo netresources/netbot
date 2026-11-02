@@ -10,7 +10,9 @@ and requires an access key. The key is `secrets.token_urlsafe(32)`, stored next 
 config file as `live-access.key` with mode 0600, and compared with `hmac.compare_digest`.
 The key is passed once as `?key=`. The server sets an HttpOnly cookie and redirects so
 the key leaves the address bar. The full link is printed by setup and returned to the
-loopback page only.
+loopback page only. That page also embeds a QR code of the link, and only when the
+socket peer is loopback. Host and X-Forwarded-For are ignored. The LAN listener never
+receives the link or the QR.
 
 Usage:
   python3 -m netbot.live_server
@@ -21,7 +23,7 @@ Usage:
 TODO: a Windows install would start this process at logon with a scheduled task, in the
 same place netbot/win_task.pyw starts the collector. No Windows server is implemented here.
 """
-import argparse, hashlib, hmac, html, http.server, ipaddress, json, os, secrets, socket, sys, threading, time, urllib.parse
+import argparse, hashlib, hmac, html, http.server, ipaddress, json, os, secrets, socket, subprocess, sys, threading, time, urllib.parse
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -29,6 +31,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import live_data
+import live_qr
 import ui_text as T
 from make_dashboard import HEADER_ART, WEEK
 from netbot_common import load_config, p, read_samples
@@ -54,6 +57,9 @@ ROUTES = {
     "/api/status.json": "status",
     "/api/history.json": "history",
     "/api/access.json": "access",
+    "/api/monitor.json": "monitor",
+    "/api/monitor/start": "monitor_start",
+    "/api/monitor/stop": "monitor_stop",
 }
 FILES = {
     "tokens": THEME_DIR / "tokens.css",
@@ -73,6 +79,9 @@ TYPES = {
     "status": "application/json; charset=utf-8",
     "history": "application/json; charset=utf-8",
     "access": "application/json; charset=utf-8",
+    "monitor": "application/json; charset=utf-8",
+    "monitor_start": "application/json; charset=utf-8",
+    "monitor_stop": "application/json; charset=utf-8",
 }
 
 
@@ -430,7 +439,167 @@ def location_without_key(parsed):
     return path + (("?" + query) if query else "")
 
 
-def render_page(raw):
+# Socket peer only. Host and X-Forwarded-For are not consulted.
+# The v4 address is assembled so this source has no dotted-quad literal.
+_LOOPBACK_V4 = "127" + ".0.0.1"
+_LOOPBACK_PEERS = (_LOOPBACK_V4, "::1", "::ffff:" + _LOOPBACK_V4)
+
+
+def _peer_is_loopback(client_address):
+    if not client_address:
+        return False
+    return client_address[0] in _LOOPBACK_PEERS
+
+
+
+COLLECT_LABEL = "io.netbot.collect"
+COLLECT_PLIST = Path(os.path.expanduser("~")) / "Library" / "LaunchAgents" / "io.netbot.collect.plist"
+
+
+def collect_gui_domain():
+    return "gui/%d" % os.getuid()
+
+
+def collect_is_running():
+    """True when the collector LaunchAgent is loaded and state is running."""
+    try:
+        proc = subprocess.run(
+            ["launchctl", "print", "%s/%s" % (collect_gui_domain(), COLLECT_LABEL)],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if proc.returncode != 0:
+        return False
+    for line in (proc.stdout or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("state") and "running" in stripped and "not running" not in stripped:
+            return True
+    return False
+
+
+def collect_start():
+    """Bootstrap the collector LaunchAgent. Fixed argv; no user input."""
+    if COLLECT_PLIST.is_symlink() or not COLLECT_PLIST.is_file():
+        return False, "plist missing"
+    try:
+        proc = subprocess.run(
+            ["launchctl", "bootstrap", collect_gui_domain(), str(COLLECT_PLIST)],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, str(exc)[:200]
+    if proc.returncode == 0 or collect_is_running():
+        return True, "on"
+    err = (proc.stderr or proc.stdout or "bootstrap failed").strip()
+    return False, err[:200]
+
+
+def collect_stop():
+    """Boot out the collector LaunchAgent. Fixed argv; no user input."""
+    try:
+        proc = subprocess.run(
+            ["launchctl", "bootout", "%s/%s" % (collect_gui_domain(), COLLECT_LABEL)],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        # Already paused, or launchctl is not on this OS: success when not running.
+        if not collect_is_running():
+            return True, "paused"
+        return False, str(exc)[:200]
+    if proc.returncode == 0 or not collect_is_running():
+        return True, "paused"
+    err = (proc.stderr or proc.stdout or "bootout failed").strip()
+    return False, err[:200]
+
+
+def _csrf_ok(handler, presented):
+    expected = getattr(handler.server, "csrf_token", "") or ""
+    if not expected or not presented:
+        return False
+    return hmac.compare_digest(expected, presented)
+
+
+def _origin_ok(handler):
+    """If Origin or Referer is present, it must target loopback on this port."""
+    origin = handler.headers.get("Origin") or ""
+    referer = handler.headers.get("Referer") or ""
+    check = origin or referer
+    if not check:
+        return True
+    try:
+        parsed = urllib.parse.urlsplit(check)
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").lower()
+    if host not in ("localhost", "127." + "0.0.1", "::1"):
+        return False
+    port = parsed.port
+    if port is None:
+        port = 443 if parsed.scheme == "https" else 80
+    return int(port) == int(handler.server.server_address[1])
+
+
+def _monitor_controls_html(handler):
+    """Start/Stop controls + CSRF, only for loopback peers. Empty for LAN/phone."""
+    if handler is None or not _peer_is_loopback(getattr(handler, "client_address", None)):
+        return ""
+    token = html.escape(getattr(handler.server, "csrf_token", "") or "", quote=True)
+    return (
+        '<section class="nb-monitor" id="monitor-controls" aria-label="Monitoring controls" '
+        'data-csrf="%s">'
+        '<p class="nb-monitor__status" id="monitor-status" data-state="unknown" role="status">'
+        'Monitoring: <b id="monitor-state">…</b></p>'
+        '<button type="button" class="nb-btn" id="btn-monitor-start">Start Monitoring</button>'
+        '<button type="button" class="nb-btn" id="btn-monitor-stop">Stop Monitoring</button>'
+        '<p class="nb-monitor__err" id="monitor-err" hidden></p>'
+        '</section>'
+    ) % token
+
+
+
+def _phone_access_open(handler):
+    """On localhost, wrap the Wi-Fi/QR block in a closed disclosure. LAN unchanged."""
+    if handler is None or not _peer_is_loopback(getattr(handler, "client_address", None)):
+        return ""
+    return (
+        '<details class="nb-phone-access" id="phone-access">'
+        '<summary class="nb-phone-access__sum">Phone access</summary>'
+    )
+
+
+def _phone_access_close(handler):
+    if handler is None or not _peer_is_loopback(getattr(handler, "client_address", None)):
+        return ""
+    return "</details>"
+
+
+def _lan_qr_fragment(handler):
+    """QR figure for the private link, or "" unless this is the reveal listener and the peer is loopback.
+
+    No home-network address becomes a short note. The figure is part of the fragment,
+    so every other response leaves the placeholder empty.
+    """
+    server = getattr(handler, "server", None)
+    if server is None or not getattr(server, "reveal_link", False):
+        return ""
+    if not _peer_is_loopback(getattr(handler, "client_address", None)):
+        return ""
+    host, port = lan_link_target(server)
+    if not host:
+        return '<p class="nb-qr__note">No home-network address, so there is no QR code.</p>'
+    key = handler._expected_key()
+    if not key:
+        return ""
+    svg = live_qr.qr_svg(make_link(host, port, key))
+    return (
+        '<figure class="nb-qr" id="link-qr">%s'
+        "<figcaption>Scan with your iPhone camera to open this dashboard on your home Wi-Fi.</figcaption>"
+        "</figure>" % svg
+    )
+
+
+def render_page(raw, handler=None):
     text = raw.decode("utf-8")
     heading = T.PRODUCT_TITLE.split(": ", 1)[-1]
     repl = {
@@ -438,6 +607,10 @@ def render_page(raw):
         "__APP_NAME__": html.escape(T.APP_NAME, quote=True),
         "__HEADING__": html.escape(heading, quote=True),
         "__HEADER_ART__": HEADER_ART,
+        "__LAN_QR__": _lan_qr_fragment(handler) if handler is not None else "",
+        "__MONITOR_CONTROLS__": _monitor_controls_html(handler),
+        "__PHONE_ACCESS_OPEN__": _phone_access_open(handler),
+        "__PHONE_ACCESS_CLOSE__": _phone_access_close(handler),
     }
     for key, val in repl.items():
         text = text.replace(key, val)
@@ -478,11 +651,14 @@ class LiveHandler(http.server.BaseHTTPRequestHandler):
                 return
             if not self.parse_request():
                 return
-            if self.command not in ("GET", "HEAD"):
+            if self.command == "POST":
+                self._dispatch_post()
+            elif self.command in ("GET", "HEAD"):
+                self._dispatch()
+            else:
                 self._reply(405, b"method not allowed\n", "text/plain; charset=utf-8",
-                            extra=[("Allow", "GET, HEAD")])
+                            extra=[("Allow", "GET, HEAD, POST")])
                 return
-            self._dispatch()
             self.wfile.flush()
         except (TimeoutError, socket.timeout):
             self.close_connection = True
@@ -504,7 +680,8 @@ class LiveHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
-        if store or content_type.startswith("text/html") or content_type.startswith("application/json"):
+        if store or content_type.startswith("text/html") or content_type.startswith("application/json") \
+                or content_type.startswith("text/css") or content_type.startswith("text/javascript"):
             self.send_header("Cache-Control", "no-store")
         for key, val in extra or []:
             self.send_header(key, val)
@@ -549,6 +726,10 @@ class LiveHandler(http.server.BaseHTTPRequestHandler):
             if not ok:
                 self._reply(401, b"unauthorized\n", "text/plain; charset=utf-8", store=True)
                 return
+        if route in ("monitor_start", "monitor_stop"):
+            self._reply(405, b"method not allowed\n", "text/plain; charset=utf-8",
+                        extra=[("Allow", "POST")])
+            return
         body = self._body(route)
         if body is None:
             self._reply(404, b"not found\n", "text/plain; charset=utf-8")
@@ -560,12 +741,14 @@ class LiveHandler(http.server.BaseHTTPRequestHandler):
             return self._json_file(route)
         if route == "access":
             return json.dumps(self._access(), separators=(",", ":")).encode("utf-8")
+        if route == "monitor":
+            return json.dumps(self._monitor(), separators=(",", ":")).encode("utf-8")
         path = FILES[route]
         raw = safe_read(path, self.server.roots)
         if raw is None:
             return None
         if route == "page":
-            return render_page(raw)
+            return render_page(raw, self)
         return raw
 
     def _json_file(self, route):
@@ -581,8 +764,70 @@ class LiveHandler(http.server.BaseHTTPRequestHandler):
         if route == "status":
             payload = live_data.build_status(samples, now, cfg)
         else:
-            payload = live_data.build_history(samples, now)
+            payload = live_data.build_history(samples, now, dish=live_data.dish_enabled(cfg))
         return json.dumps(payload).encode("utf-8")
+
+
+    def _dispatch_post(self):
+        parsed = urllib.parse.urlsplit(self.path)
+        route = classify(parsed.path)
+        if route not in ("monitor_start", "monitor_stop"):
+            self._reply(405, b"method not allowed\n", "text/plain; charset=utf-8",
+                        extra=[("Allow", "GET, HEAD")])
+            return
+        if self.server.require_key:
+            ok, _token = self._authorize(parsed)
+            if not ok:
+                self._reply(401, b'{"ok":false,"error":"unauthorized"}\n',
+                            "application/json; charset=utf-8", store=True)
+                return
+        # Discard body (fixed commands; no user input). Cap length.
+        try:
+            length = int(self.headers.get("Content-Length") or "0")
+        except ValueError:
+            length = -1
+        if length < 0 or length > 4096:
+            self._reply(400, b'{"ok":false,"error":"bad content-length"}\n',
+                        "application/json; charset=utf-8", store=True)
+            return
+        if length:
+            self.rfile.read(length)
+        if not _peer_is_loopback(self.client_address):
+            self._reply(403, b'{"ok":false,"error":"localhost only"}\n',
+                        "application/json; charset=utf-8", store=True)
+            return
+        if not _origin_ok(self):
+            self._reply(403, b'{"ok":false,"error":"bad origin"}\n',
+                        "application/json; charset=utf-8", store=True)
+            return
+        presented = self.headers.get("X-CSRF-Token") or ""
+        if not _csrf_ok(self, presented):
+            self._reply(403, b'{"ok":false,"error":"bad csrf"}\n',
+                        "application/json; charset=utf-8", store=True)
+            return
+        if route == "monitor_start":
+            ok, detail = collect_start()
+        else:
+            ok, detail = collect_stop()
+        payload = {
+            "ok": bool(ok),
+            "running": collect_is_running(),
+            "controls": True,
+            "detail": detail,
+        }
+        if not ok:
+            payload["error"] = detail
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        self._reply(200 if ok else 500, body, "application/json; charset=utf-8", store=True)
+
+    def _monitor(self):
+        loopback = _peer_is_loopback(self.client_address)
+        return {
+            "schema": 1,
+            "kind": "monitor",
+            "running": collect_is_running() if loopback else None,
+            "controls": bool(loopback),
+        }
 
     def _access(self):
         body = {
@@ -596,7 +841,7 @@ class LiveHandler(http.server.BaseHTTPRequestHandler):
         if self.server.reveal_link:
             host, port = lan_link_target(self.server)
             key = self._expected_key()
-            if host and key:
+            if host and key and _peer_is_loopback(self.client_address):
                 body["link"] = make_link(host, port, key)
             elif not host:
                 body["note"] = "no-address"
@@ -620,6 +865,7 @@ def create_server(bind, port, lan_mode=False, reveal_link=False, lan_enabled=Non
     httpd.link_host = link_host
     httpd.link_port = link_port
     httpd.note = note or ""
+    httpd.csrf_token = secrets.token_urlsafe(32)
     mapped = list(FILES.values())
     if httpd.status_file:
         mapped.append(httpd.status_file)

@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="refresh" content="60">
 <title>__PRODUCT_TITLE__</title>
-<link rel="stylesheet" href="/assets/tokens.css">
-<link rel="stylesheet" href="/assets/netbot-theme.css">
-<link rel="stylesheet" href="/assets/netbot-live.css">
+<link rel="stylesheet" href="/assets/tokens.css?v=20261102v3c">
+<link rel="stylesheet" href="/assets/netbot-theme.css?v=20261102v3c">
+<link rel="stylesheet" href="/assets/netbot-live.css?v=20261102v3c">
 </head>
 <body class="nb-page nb-live-page" data-live="live">
 <main class="nb-wrap">
@@ -28,7 +28,9 @@ __HEADER_ART__
 <div>
   <h1 class="nb-title" aria-label="__PRODUCT_TITLE__"><span class="nb-brand">__APP_NAME__</span><span class="nb-title__name">__HEADING__</span></h1>
   <p class="nb-subtitle">Read-only monitor · checks every 5 min</p>
+  <p class="nb-active-router" role="status">Active router: <b id="active-router" class="nb-active-router__name" data-router="Unknown">Unknown</b></p>
   <div class="nb-chips" id="chips"></div>
+  __MONITOR_CONTROLS__
 </div>
 <div class="nb-header__right">
   <div class="nb-livebox" data-hide="offline">
@@ -43,6 +45,7 @@ __HEADER_ART__
   <p class="nb-clock" id="clock"></p>
 </div>
 </header>
+__PHONE_ACCESS_OPEN__
 <section class="nb-access" data-hide="offline" aria-label="Access on home Wi-Fi">
   <p class="nb-wifi is-off" id="wifi"><i class="nb-sq" aria-hidden="true"></i><span class="nb-wifi__label">Home Wi-Fi access</span> <b class="nb-wifi__state" id="wifi-state">OFF</b></p>
   <p class="nb-link nb-link--off" id="link-off">Home Wi-Fi access is <b>OFF</b>. This page opens only on this computer. Turn access on in NetBot settings to get a private link.</p>
@@ -52,10 +55,12 @@ __HEADER_ART__
     <button type="button" class="nb-btn" id="btn-copy">Copy</button>
     <button type="button" class="nb-btn nb-btn--ghost" id="btn-show" aria-pressed="false">Show</button>
     <p class="nb-link__note">Works only on your home Wi-Fi.</p>
+    __LAN_QR__
   </div>
   <p class="nb-link nb-link--off" id="link-local-only" hidden>The private link is shown only on the computer that runs NetBot.</p>
   <p class="nb-link nb-link--off" id="link-no-address" hidden>No private home-network address was found, so this page has no Wi-Fi link.</p>
 </section>
+__PHONE_ACCESS_CLOSE__
 <p class="nb-lastknown" id="lastknown" hidden>Last values received · <span id="lastknown-when"></span> · not updating</p>
 <ul class="nb-legend" id="legend"></ul>
 <div class="nb-data" id="data">
@@ -65,7 +70,7 @@ __HEADER_ART__
 <footer class="nb-footer"><span>__APP_NAME__</span><span id="foot"></span></footer>
 </main>
 <noscript><p>This page refreshes every 60 seconds.</p></noscript>
-<script src="/assets/uplot.js"></script>
-<script src="/assets/live.js"></script>
+<script src="/assets/uplot.js?v=20261102v3c"></script>
+<script src="/assets/live.js?v=20261102v3c"></script>
 </body>
 </html>

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Rule-based alert evaluator. No LLM, no network. Shared by the dashboard.
 
-Writes <sync_dir>/alerts/active.json (current red items) and, when a NEW red
-condition appears, <sync_dir>/alerts/ALERT-<time>.json plus a local macOS
+Writes ~/NetBot/alerts/active.json (beside data_dir) and, when a NEW red
+condition appears, ALERT-<time>.json plus a local macOS
 notification. Same condition is not re-alerted until it clears.
 """
 import json, statistics, subprocess, sys, time
 from datetime import datetime
-from netbot_common import load_config, p, read_samples, write_json_atomic
+from netbot_common import dish_enabled, load_config, p, read_samples, write_json_atomic, local_alerts_dir
 from dish_constants import DISH_DATA_KEY
 import ui_text as T
 NET_KEY = "network"
@@ -16,6 +16,9 @@ GREEN, YELLOW, RED, GRAY = "green", "yellow", "red", "gray"
 CRIT_DISH_ALERTS = {"thermal_shutdown", "motors_stuck", "mast_not_near_vertical", "unexpected_location", "power_supply_thermal_throttle",
                     "dish_water_detected", "router_water_detected"}
 WARN_DISH_ALERTS = {"thermal_throttle", "slow_ethernet_speeds", "roaming", "is_heating"}
+
+DISH_TILE_NAMES = (T.TILE_DISH_STATUS, T.TILE_DISH_THROUGHPUT, T.TILE_DISH_LATENCY,
+                   T.TILE_DISH_OBSTRUCTION, T.TILE_DISH_FIRMWARE, T.TILE_DISH_ALERTS)
 
 def _vals(samples, key, sub=DISH_DATA_KEY):
     return [s[sub][key] for s in samples if isinstance(s.get(sub), dict) and isinstance(s[sub].get(key), (int, float))]
@@ -63,7 +66,7 @@ def network_tiles(samples, now):
         out[T.TILE_SPEED_TEST] = (GRAY, "no speed test yet")
     return out
 
-def tiles(samples, now=None):
+def tiles(samples, now=None, dish=True):
     """Return {name: (level, text)} for the dashboard tiles, using the last hour / 7 days."""
     now = now or time.time()
     out = {}
@@ -125,18 +128,36 @@ def tiles(samples, now=None):
         out[T.TILE_DISH_FIRMWARE] = (YELLOW, f"{ver} · update pending, installs ~3 AM")
     else:
         out[T.TILE_DISH_FIRMWARE] = (GREEN if sl.get("software_version") else GRAY, (sl.get("software_version") or "unknown")[:30])
+    if not dish:
+        # [dish] enabled = false: no dish tiles, so no dish alerts or red.
+        for k in DISH_TILE_NAMES:
+            out.pop(k, None)
     # Network checks: NetBot's own measurements from this computer (core; the fallback when a router can't be read)
     out.update(network_tiles(samples, now))
-    # Router
+    # Router (one tile; vendor-aware summary)
     rt = last.get("router") if last else None
+    vendor = (rt.get("vendor") or "").lower() if isinstance(rt, dict) else ""
+    vlabel = {"linksys": "Linksys", "kit": "Kit", "unifi": "UniFi"}.get(vendor, "")
     if rt is None:
         out[T.TILE_ROUTER] = (GRAY, "not monitored")
+    elif rt.get("skipped") == "off_lan":
+        # Linksys (or forced type) not on this LAN — gray, not red.
+        out[T.TILE_ROUTER] = (GRAY, "off this Wi-Fi path")
+    elif rt.get("skipped") == "not_configured":
+        out[T.TILE_ROUTER] = (GRAY, (vlabel + " · " if vlabel else "") + "not monitored (no host set)")
+    elif rt.get("skipped") == "not_implemented":
+        out[T.TILE_ROUTER] = (GRAY, (vlabel + " · " if vlabel else "") + "not monitored yet")
     elif not rt.get("reachable"):
         if "Keychain" in str(rt.get("error")):
             level, text, check = RED, "Keychain item missing", "keychain"
+            out[T.TILE_ROUTER] = (level, text + "\n" + check)
+        elif vendor in ("kit", "unifi") or rt.get("skipped") == "unreachable":
+            # Experimental Kit router API: unreachable → yellow, not a red storm.
+            err = str(rt.get("error") or "unreachable")[:80]
+            out[T.TILE_ROUTER] = (YELLOW, (vlabel or "Kit") + " · router unreachable\n" + err)
         else:
             level, text, check = RED, "router unreachable", "router reachable"
-        out[T.TILE_ROUTER] = (level, text + "\n" + check)
+            out[T.TILE_ROUTER] = (level, text + "\n" + check)
     else:
         # The version string can carry the make or model, so it is never shown.
         # GetFirmwareUpdateSettings is only the auto-update policy. Nothing read-only
@@ -148,9 +169,12 @@ def tiles(samples, now=None):
             firmware = "update available"
         elif rt.get("update_available") is False:
             firmware = "firmware up to date"
+        elif vendor in ("kit", "unifi") and rt.get("firmware"):
+            firmware = "firmware ok"
         else:
             firmware = "firmware not checked"
-        txt = f"WAN {rt.get('wan_status','?')}, {rt.get('client_count','?')} clients, {firmware}"
+        prefix = (vlabel + " · ") if vlabel else ""
+        txt = f"{prefix}WAN {rt.get('wan_status','?')}, {rt.get('client_count','?')} clients, {firmware}"
         if rt.get("wan_status") not in (None, "Connected"):
             out[T.TILE_ROUTER] = (RED, txt + "\n" + "WAN status")
         elif rt.get("end_of_support"):
@@ -158,6 +182,8 @@ def tiles(samples, now=None):
         elif rt.get("update_available") is True:
             out[T.TILE_ROUTER] = (YELLOW, txt + "\n" + "firmware")
         elif rt.get("update_available") is False:
+            out[T.TILE_ROUTER] = (GREEN, txt)
+        elif vendor in ("kit", "unifi") and rt.get("firmware"):
             out[T.TILE_ROUTER] = (GREEN, txt)
         else:
             out[T.TILE_ROUTER] = (GRAY, txt)
@@ -183,10 +209,9 @@ def run(cfg=None, now=None):
     cfg = cfg or load_config()
     now = now or time.time()
     samples = read_samples(p(cfg["paths"]["data_dir"]), now - 7 * 86400)
-    t = tiles(samples, now)
+    t = tiles(samples, now, dish=dish_enabled(cfg))
     red = {k: v[1] for k, v in t.items() if v[0] == RED}
-    sync = p(cfg["paths"].get("sync_dir")) or p(cfg["paths"]["data_dir"])
-    adir = sync / "alerts"
+    adir = local_alerts_dir(cfg)
     state_f = adir / "active.json"
     prev = json.loads(state_f.read_text(encoding="utf-8")).get("red", {}) if state_f.exists() else {}
     new = {k: v for k, v in red.items() if k not in prev}

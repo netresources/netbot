@@ -2,7 +2,7 @@
 """Build the static dashboard (HTML, stdlib only) and a PNG snapshot (matplotlib, optional).
 
 Output: <data_dir>/../dashboard/index.html (local, self-contained, auto-refresh 5 min)
-        <sync_dir>/dashboard.png (for the weekly report)
+        local dashboard.png (OneDrive copy via batch sync)
 Usage:  make_dashboard.py [--example] [--png PATH]
 
 Look and feel come only from the shipped theme files (netbot/theme/, read by theme_tokens.py): the HTML uses
@@ -12,7 +12,7 @@ values are written in this file; tests/test_dashboard.py fails if one is.
 import argparse, html, math, statistics, time
 from datetime import datetime
 from pathlib import Path
-from netbot_common import load_config, p, read_samples
+from netbot_common import dish_enabled, load_config, p, read_samples
 from dish_constants import DISH_DATA_KEY
 from evaluate_alerts import tiles, NET_KEY, CRIT_DISH_ALERTS, WARN_DISH_ALERTS
 import theme_tokens as TH
@@ -32,7 +32,7 @@ def hourly(points):
         b.setdefault(int(t // 3600) * 3600, []).append(v)
     return [(t, statistics.median(v)) for t, v in sorted(b.items())]
 
-def charts(samples, now, router_on):
+def charts(samples, now, router_on, dish=True):
     """Chart rows: (section label, source mark, [(title, metric, points, unit, span seconds)])."""
     d1 = [s for s in samples if s["ts"] >= now - DAY]
     d7 = [s for s in samples if s["ts"] >= now - WEEK]
@@ -53,6 +53,8 @@ def charts(samples, now, router_on):
             # speed tests run every few hours, so this one chart shows 7 days
             (T.CHART_SPEED_TEST, "speed-test", series(d7, "speedtest_down_mbps", sub=NET_KEY), "Mbps", WEEK)]),
     ]
+    if not dish:
+        rows = [r for r in rows if r[0] not in (T.SECTION_DISH_24H, T.SECTION_DISH_7D)]
     if router_on:
         rows.append((T.SECTION_ROUTER, T.SRC_ROUTER, [
             (T.CHART_ROUTER_DEVICES, "router-devices", series(d1, "client_count", sub="router"), "count", DAY)]))
@@ -169,16 +171,34 @@ def svg_chart(points, t0, t1, unit, w=520, h=150):
             f'<text class="nb-chart-tick" x="{left-4}" y="{Y(0):.1f}" text-anchor="end">0</text></svg>')
 
 # Header line art (STYLE-SPEC section 8), drawn with theme classes and variables only.
-HEADER_ART = ('<svg class="nb-header__art" viewBox="0 0 800 200" preserveAspectRatio="xMaxYMid slice" fill="none" aria-hidden="true">'
-              '<g class="nb-orbit nb-orbit--faint" stroke-width="1"><ellipse cx="640" cy="120" rx="300" ry="64" transform="rotate(-14 640 120)"/>'
-              '<ellipse cx="640" cy="120" rx="210" ry="44" transform="rotate(-14 640 120)"/><circle cx="640" cy="120" r="34"/></g>'
-              '<g class="nb-orbit" stroke-width="1.25" stroke-linecap="round"><path d="M352 168 A300 64 -14 0 1 912 18" opacity=".55"/>'
-              '<path d="M444 150 A210 44 -14 0 1 820 52" stroke-dasharray="2 6" opacity=".8"/>'
-              '<path d="M60 196 C 260 150, 420 70, 800 4" stroke-dasharray="1 5" opacity=".35"/></g>'
-              '<rect class="nb-orbit" x="248.5" y="142.5" width="7" height="7" stroke-width="1.5" style="fill: var(--nb-bg)"/></svg>')
+HEADER_ART = (
+    '<div class="nb-header__art nb-cosmos" aria-hidden="true">'
+    '<canvas class="nb-cosmos__canvas" width="900" height="220"></canvas>'
+    '<svg class="nb-cosmos__fallback" viewBox="0 0 900 220" '
+    'preserveAspectRatio="xMidYMid slice" fill="none">'
+    '<defs>'
+    '<radialGradient id="nb-neb-a" cx="22%" cy="40%" r="45%">'
+    '<stop class="nb-cosmos-stop-a0" offset="0%" stop-opacity=".35"/>'
+    '<stop class="nb-cosmos-stop-a1" offset="55%" stop-opacity=".12"/>'
+    '<stop class="nb-cosmos-stop-a2" offset="100%" stop-opacity="0"/>'
+    '</radialGradient>'
+    '<radialGradient id="nb-neb-b" cx="78%" cy="55%" r="40%">'
+    '<stop class="nb-cosmos-stop-b0" offset="0%" stop-opacity=".28"/>'
+    '<stop class="nb-cosmos-stop-b1" offset="60%" stop-opacity=".08"/>'
+    '<stop class="nb-cosmos-stop-b2" offset="100%" stop-opacity="0"/>'
+    '</radialGradient>'
+    '</defs>'
+    '<rect class="nb-cosmos-bg" width="900" height="220"/>'
+    '<ellipse class="nb-cosmos-neb-a" cx="200" cy="90" rx="210" ry="110"/>'
+    '<ellipse class="nb-cosmos-neb-b" cx="720" cy="130" rx="200" ry="100"/>'
+    '</svg>'
+    '<div class="nb-cosmos__vignette"></div>'
+    '</div>'
+)
 
-def build_html(samples, now, example=False, title=T.PRODUCT_TITLE):
-    t = tiles(samples, now)
+
+def build_html(samples, now, example=False, title=T.PRODUCT_TITLE, dish_on=True):
+    t = tiles(samples, now, dish=dish_on)
     vals = readout_values(samples, now)
     last = samples[-1] if samples else {}
     router_on = isinstance(last.get("router"), dict)
@@ -191,7 +211,7 @@ def build_html(samples, now, example=False, title=T.PRODUCT_TITLE):
     collector = system_tile(T.TILE_COLLECTOR, *t[T.TILE_COLLECTOR]) if T.TILE_COLLECTOR in t else ""
     banner = (f'<div class="nb-banner" role="note"><span aria-hidden="true">\u25B2</span>{E(T.EXAMPLE_BANNER)}</div>' if example else "")
     chips = "".join(f'<span class="nb-chip{" nb-chip--on" if on else ""}">{E(c)}</span>' for c, on in
-                    ((T.CHIP_DISH, True), (T.CHIP_NETWORK, True), (T.CHIP_ROUTER.format(state="on" if router_on else "off"), router_on)))
+                    ((T.CHIP_DISH if dish_on else T.CHIP_DISH_OFF, dish_on), (T.CHIP_NETWORK, True), (T.CHIP_ROUTER.format(state="on" if router_on else "off"), router_on)))
     legend = "".join(f'<li>{src_mark(m)}{E(d)}</li>' for m, d in T.LEGEND)
     def chart_grid(src, items):
         size = {"w": 1300, "h": 220} if len(items) == 1 else {}   # full-width chart: wider viewBox, same tick size
@@ -201,12 +221,16 @@ def build_html(samples, now, example=False, title=T.PRODUCT_TITLE):
         return f'<div class="nb-charts{ {1: " nb-charts--1", 4: " nb-charts--4"}.get(len(items), "") }">{figs}</div>'
     def chart_section(label, src, items):
         return f'<section class="nb-section"><h2 class="nb-section__label">{E(label)}</h2>{chart_grid(src, items)}</section>'
-    rows = charts(samples, now, router_on)
+    rows = charts(samples, now, router_on, dish=dish_on)
     router = ""
     if router_on:   # add-on section: left out of the HTML entirely when the add-on is off
         _, src, items = rows.pop()
         router = (f'<section class="nb-addon"><h2 class="nb-section__label">{E(T.SECTION_ROUTER)} <span class="nb-tag">ADD-ON</span></h2>'
                   f'<div class="nb-systems">{system_tile(T.TILE_ROUTER, *t[T.TILE_ROUTER])}</div>{chart_grid(src, items)}</section>')
+    systems = ('<div class="nb-systems">' + collector + '</div>') if collector else ''
+    dish_html = (f'<section class="nb-section"><h2 class="nb-section__label">{E(T.SECTION_DISH)}</h2>{systems}'
+                 f'<div class="nb-readouts">{panels(dish, wide=(T.TILE_DISH_ALERTS,))}</div></section>') if dish_on else ''
+    net_systems = '' if dish_on else systems
     when = datetime.fromtimestamp(now).strftime("%a %b %d, %I:%M %p")
     heading = title.split(": ", 1)[-1]
     offline = (
@@ -224,9 +248,8 @@ def build_html(samples, now, example=False, title=T.PRODUCT_TITLE):
 {banner}{offline}<header class="nb-header">{HEADER_ART}<div><h1 class="nb-title" aria-label="{E(title)}"><span class="nb-brand">{E(T.APP_NAME)}</span><span class="nb-title__name">{E(heading)}</span></h1>
 <div class="nb-chips">{chips}</div></div>{clock}</header>
 <ul class="nb-legend">{legend}</ul>
-<section class="nb-section"><h2 class="nb-section__label">{E(T.SECTION_DISH)}</h2>{('<div class="nb-systems">' + collector + '</div>') if collector else ''}
-<div class="nb-readouts">{panels(dish, wide=(T.TILE_DISH_ALERTS,))}</div></section>
-<section class="nb-section"><h2 class="nb-section__label">{E(T.SECTION_NETWORK)}</h2><div class="nb-readouts">{panels(net)}</div></section>
+{dish_html}
+<section class="nb-section"><h2 class="nb-section__label">{E(T.SECTION_NETWORK)}</h2>{net_systems}<div class="nb-readouts">{panels(net)}</div></section>
 {"".join(chart_section(*r) for r in rows)}
 {router}
 <footer class="nb-footer"><span>{E(T.APP_NAME)}</span><span>{E(foot)}</span></footer>
@@ -256,19 +279,19 @@ def png_layout(n_tiles, chart_rows):
         y -= chart_h
     return height, tiles_r, charts_r
 
-def build_png(samples, now, path, example=False, title=T.PRODUCT_TITLE):
+def build_png(samples, now, path, example=False, title=T.PRODUCT_TITLE, dish_on=True):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import matplotlib.dates as mdates
     C = TH.mpl_colors()
     plt.style.use(str(TH.MPLSTYLE))
-    t = tiles(samples, now)
+    t = tiles(samples, now, dish=dish_on)
     last = samples[-1] if samples else {}
     router_on = isinstance(last.get("router"), dict)
     if not router_on:
         t.pop(T.TILE_ROUTER, None)   # add-on off: left out, as in the HTML
-    rows = charts(samples, now, router_on)
+    rows = charts(samples, now, router_on, dish=dish_on)
     height, tile_rects, chart_rects = png_layout(len(t), [len(items) for _, _, items in rows])
     fig = plt.figure(figsize=(14, height), dpi=100)
     fig.suptitle(title, fontsize=16, fontweight="semibold", color=C["text"], y=1 - 0.30 / height)
@@ -318,11 +341,10 @@ def run(cfg=None, png=None, example=False, now=None, title=T.PRODUCT_TITLE):
     samples = read_samples(data_dir, now - WEEK)
     out_dir = data_dir.parent / "dashboard"
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "index.html").write_text(build_html(samples, now, example, title), encoding="utf-8")
-    sync = p(cfg["paths"].get("sync_dir"))
-    png = Path(png) if png else ((sync or out_dir) / "dashboard.png")
+    (out_dir / "index.html").write_text(build_html(samples, now, example, title, dish_on=dish_enabled(cfg)), encoding="utf-8")
+    png = Path(png) if png else (out_dir / "dashboard.png")
     try:
-        build_png(samples, now, png, example, title)
+        build_png(samples, now, png, example, title, dish_on=dish_enabled(cfg))
     except ImportError:
         pass  # matplotlib not installed: HTML only
     return out_dir / "index.html", png
