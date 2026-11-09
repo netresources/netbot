@@ -3,6 +3,7 @@
 import json, pathlib, sys, threading, time, unittest, urllib.error, urllib.request
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "netbot"))
 import live_server as ls
+from unittest import mock
 
 class MonitorControls(unittest.TestCase):
     def setUp(self):
@@ -49,7 +50,9 @@ class MonitorControls(unittest.TestCase):
             urllib.request.urlopen(req, timeout=3)
         self.assertEqual(ctx.exception.code, 403)
 
-    def test_post_with_csrf_stop_while_paused(self):
+    @mock.patch.object(ls, "collect_is_running", return_value=False)
+    @mock.patch.object(ls, "collect_stop", return_value=(True, "paused"))
+    def test_post_with_csrf_stop_while_paused(self, stop_mock, running_mock):
         req = urllib.request.Request(
             self._url("/api/monitor/stop"), data=b"{}", method="POST",
             headers={
@@ -76,7 +79,7 @@ class MonitorControls(unittest.TestCase):
         self.assertFalse(ls._peer_is_loopback(("198.51.100.50", 8766)))
 
     def test_assets_no_store_and_query_ok(self):
-        req = urllib.request.Request(self._url("/assets/netbot-theme.css?v=20261102v3c"))
+        req = urllib.request.Request(self._url("/assets/netbot-theme.css?v=20261109btn"))
         with urllib.request.urlopen(req, timeout=3) as resp:
             self.assertEqual(resp.status, 200)
             self.assertIn("no-store", (resp.headers.get("Cache-Control") or ""))
@@ -84,7 +87,7 @@ class MonitorControls(unittest.TestCase):
         self.assertIn("nb-router-pulse", css)
         self.assertIn("--nb-router-kit", css)
         self.assertIn("nb-router-glow", css)
-        with urllib.request.urlopen(self._url("/assets/live.js?v=20261102v3c"), timeout=3) as jr:
+        with urllib.request.urlopen(self._url("/assets/live.js?v=20261109btn"), timeout=3) as jr:
             livejs = jr.read().decode()
         self.assertIn("data-glint-count", livejs)
         self.assertIn("nb-btn--flash", livejs)
@@ -92,6 +95,41 @@ class MonitorControls(unittest.TestCase):
         self.assertIn("rand(4000, 7000)", livejs)
         self.assertIn("data-glint-angle", livejs)
         self.assertIn("Math.tan(rad)", livejs)
+
+
+class CollectIsRunning(unittest.TestCase):
+    def test_loaded_not_running_state_counts_as_on(self):
+        class FakeProc:
+            returncode = 0
+            stdout = "\tstate = not running\n\truns = 9\n\tlast exit code = 0\n"
+            stderr = ""
+        real = ls.subprocess.run
+        ls.subprocess.run = lambda *a, **k: FakeProc()
+        try:
+            self.assertTrue(ls.collect_is_running())
+        finally:
+            ls.subprocess.run = real
+
+    def test_print_failure_counts_as_paused(self):
+        class FakeProc:
+            returncode = 113
+            stdout = ""
+            stderr = "Could not find service"
+        real = ls.subprocess.run
+        ls.subprocess.run = lambda *a, **k: FakeProc()
+        try:
+            self.assertFalse(ls.collect_is_running())
+        finally:
+            ls.subprocess.run = real
+
+    def test_live_js_actionable_mapping(self):
+        livejs = (pathlib.Path(__file__).resolve().parents[1] / "netbot" / "live_page" / "live.js").read_text()
+        self.assertIn("setMonitorBtn(start, !known || !running);", livejs)
+        self.assertIn("setMonitorBtn(stop, !known || running);", livejs)
+        self.assertIn("btn.disabled = !actionable;", livejs)
+        css = (pathlib.Path(__file__).resolve().parents[1] / "netbot" / "theme" / "netbot-live.css").read_text()
+        self.assertIn("cursor: not-allowed;", css)
+        self.assertIn("opacity: .55;", css)
 
 if __name__ == "__main__":
     unittest.main()

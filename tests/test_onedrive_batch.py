@@ -119,5 +119,40 @@ class Batch(unittest.TestCase):
         self.assertFalse(N.should_sync_onedrive(cfg, now=self.now))
 
 
+
+class AtomicReplaceRetry(unittest.TestCase):
+    def test_os_replace_retries_edeadlk(self):
+        calls = {"n": 0}
+        real_replace = os.replace
+
+        def flaky(tmp, path):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise OSError(11, "Resource deadlock avoided")
+            return real_replace(tmp, path)
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            dst = root / "out.jsonl"
+            tmp = root / "out.jsonl.tmp"
+            tmp.write_text("x\n", encoding="utf-8")
+            with mock.patch.object(os, "replace", side_effect=flaky):
+                N._os_replace_retry(tmp, dst, retries=5)
+            self.assertTrue(dst.is_file())
+            self.assertEqual(dst.read_text(encoding="utf-8"), "x\n")
+            self.assertGreaterEqual(calls["n"], 3)
+
+    def test_os_replace_non_deadlock_raises(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            dst = root / "out.jsonl"
+            tmp = root / "out.jsonl.tmp"
+            tmp.write_text("x\n", encoding="utf-8")
+            with mock.patch.object(os, "replace", side_effect=OSError(13, "Permission denied")):
+                with self.assertRaises(OSError) as ctx:
+                    N._os_replace_retry(tmp, dst, retries=3)
+            self.assertEqual(ctx.exception.errno, 13)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -363,12 +363,12 @@ function cosmosCssColor(name, fallbackParts) {
     return box ? (box.getAttribute("data-csrf") || "") : "";
   }
 
-  function setMonitorBtn(btn, selected) {
+  function setMonitorBtn(btn, actionable) {
     if (!btn) return;
     btn.classList.remove("nb-btn--idle", "nb-btn--selected");
-    btn.classList.add(selected ? "nb-btn--selected" : "nb-btn--idle");
-    /* Keep both clickable; selected means "current state", not disabled. */
-    btn.disabled = false;
+    btn.classList.add(actionable ? "nb-btn--selected" : "nb-btn--idle");
+    /* Bright/selected = the action you can take; dim/disabled = current state. */
+    btn.disabled = !actionable;
   }
 
   function paintMonitor(state) {
@@ -386,9 +386,9 @@ function cosmosCssColor(name, fallbackParts) {
     var text = !known ? "UNKNOWN" : (running ? "ON" : "PAUSED");
     if (status) status.setAttribute("data-state", label);
     if (word) word.textContent = text;
-    /* ON → Start selected; PAUSED → Stop selected. */
-    setMonitorBtn(start, known && running);
-    setMonitorBtn(stop, known && !running);
+    /* ON → Stop actionable; PAUSED → Start actionable; unknown → both usable. */
+    setMonitorBtn(start, !known || !running);
+    setMonitorBtn(stop, !known || running);
   }
 
   function flashMonitorBtn(btn, then) {

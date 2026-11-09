@@ -86,11 +86,32 @@ def append_jsonl(path, obj):
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(obj, separators=(",", ":")) + "\n")
 
+def _os_replace_retry(tmp, path, retries=8):
+    """os.replace with backoff for OneDrive CloudStorage EDEADLK (errno 11)."""
+    tmp, path = Path(tmp), Path(path)
+    delay = 0.05
+    last = None
+    for _ in range(retries):
+        try:
+            os.replace(tmp, path)
+            return
+        except OSError as exc:
+            last = exc
+            if getattr(exc, "errno", None) not in (11, getattr(__import__("errno"), "EDEADLK", 11), getattr(__import__("errno"), "EAGAIN", 35)):
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 1.0)
+    if last is not None:
+        raise last
+    raise OSError("os.replace failed")
+
+
 def write_json_atomic(path, obj):
     path.parent.mkdir(parents=True, exist_ok=True)
+    path = Path(path)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(obj, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    _os_replace_retry(tmp, path)
 
 def read_samples(data_dir, since_ts):
     out = []
@@ -127,9 +148,10 @@ def _sync_month_names(ts):
 
 def _write_jsonl_atomic(path, rows):
     path.parent.mkdir(parents=True, exist_ok=True)
+    path = Path(path)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text("".join(json.dumps(r, separators=(",", ":")) + "\n" for r in rows), encoding="utf-8")
-    os.replace(tmp, path)
+    _os_replace_retry(tmp, path)
 
 
 def sync_history(data_dir, sync_dir, ts=None):
@@ -248,7 +270,7 @@ def write_text_atomic(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    _os_replace_retry(tmp, path)
 
 
 def copy_file_atomic(src, dst):
@@ -258,7 +280,7 @@ def copy_file_atomic(src, dst):
     dst.parent.mkdir(parents=True, exist_ok=True)
     tmp = dst.with_suffix(dst.suffix + ".tmp")
     tmp.write_bytes(src.read_bytes())
-    os.replace(tmp, dst)
+    _os_replace_retry(tmp, dst)
     return True
 
 

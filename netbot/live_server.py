@@ -461,7 +461,12 @@ def collect_gui_domain():
 
 
 def collect_is_running():
-    """True when the collector LaunchAgent is loaded and state is running."""
+    """True when the collector LaunchAgent is loaded (bootstrapped).
+
+    The collector is a StartInterval job, so between samples launchd shows
+    ``state = not running`` even though monitoring is on. ``launchctl print``
+    succeeds while the job is loaded; after bootout it fails (e.g. rc 113).
+    """
     try:
         proc = subprocess.run(
             ["launchctl", "print", "%s/%s" % (collect_gui_domain(), COLLECT_LABEL)],
@@ -469,13 +474,7 @@ def collect_is_running():
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
-    if proc.returncode != 0:
-        return False
-    for line in (proc.stdout or "").splitlines():
-        stripped = line.strip()
-        if stripped.startswith("state") and "running" in stripped and "not running" not in stripped:
-            return True
-    return False
+    return proc.returncode == 0
 
 
 def collect_start():
